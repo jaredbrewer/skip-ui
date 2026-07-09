@@ -165,7 +165,20 @@ public struct NavigationStack : View, Renderable {
             // When we layout, only extend into safe areas that are due to system bars, not into any app chrome
             var ignoresSafeAreaEdges: Edge.Set = [.top, .bottom]
             ignoresSafeAreaEdges.formIntersection(safeArea?.absoluteSystemBarEdges ?? [])
-            IgnoresSafeAreaLayout(expandInto: ignoresSafeAreaEdges, checkEdges: ignoresSafeAreaEdges, logTag: "NavigationStack") { _, _ in
+            // Pass the ACTUAL expanded edges from the adjacency check into
+            // NavigationEntryArguments, rather than the initial candidate set.
+            // IgnoresSafeAreaLayout measures its layout position after the first frame and
+            // updates edgesState via adjacentSafeAreaEdges(); the result is passed as the
+            // second parameter of the target closure. A NavigationStack panel inside a
+            // custom-tab-bar VStack sits ABOVE the nav bar and is NOT adjacent to
+            // safeBoundsPx.bottom, so adjacentSafeAreaEdges returns {} for the bottom
+            // edge. Using the actual edges here means RenderEntry's bottom-padding guard
+            // (`ignoresSafeAreaEdges.contains(.bottom) == false`) produces 0 dp padding,
+            // eliminating the dead band on pushed destinations. A standalone full-screen
+            // NavigationStack IS adjacent to safeBoundsPx.bottom on every frame, so
+            // actualExpandedEdges still contains .bottom and the padding is applied correctly.
+            // Mirrors the analogous top-inset correctness (hidden-toolbar guard below).
+            IgnoresSafeAreaLayout(expandInto: ignoresSafeAreaEdges, checkEdges: ignoresSafeAreaEdges, logTag: "NavigationStack") { _, actualExpandedEdges in
                 ComposeContainer(modifier: context.modifier, fillWidth: true, fillHeight: true) { modifier in
                     let decoratorList = listOf(rememberSaveableStateHolderNavEntryDecorator<NavKey>())
                     let entryProvider = entryProvider {
@@ -181,7 +194,7 @@ public struct NavigationStack : View, Renderable {
                             let toolbarPreferencesCollector = PreferenceCollector<ToolbarPreferences>(key: ToolbarPreferenceKey.self, state: toolbarPreferences)
                             let toolbarContentPreferences = rememberSaveable(stateSaver: state.stateSaver as! Saver<Preference<ToolbarContentPreferences>, Any>) { mutableStateOf(Preference<ToolbarContentPreferences>(key: ToolbarContentPreferenceKey.self)) }
                             let toolbarContentPreferencesCollector = PreferenceCollector<ToolbarContentPreferences>(key: ToolbarContentPreferenceKey.self, state: toolbarContentPreferences)
-                            let arguments = NavigationEntryArguments(isRoot: true, state: state, safeArea: safeArea, ignoresSafeAreaEdges: ignoresSafeAreaEdges, title: title.value.reduced, toolbarPreferences: toolbarPreferences.value.reduced)
+                            let arguments = NavigationEntryArguments(isRoot: true, state: state, safeArea: safeArea, ignoresSafeAreaEdges: actualExpandedEdges, title: title.value.reduced, toolbarPreferences: toolbarPreferences.value.reduced)
                             PreferenceValues.shared.collectPreferences([titleCollector, toolbarPreferencesCollector, toolbarContentPreferencesCollector, destinationsCollector, destinationLayoutHintsCollector]) {
                                 RenderEntry(navigator: navigator, toolbarContent: toolbarContentPreferences, arguments: arguments, context: context) { context in
                                     root.Compose(context: context)
@@ -204,7 +217,7 @@ public struct NavigationStack : View, Renderable {
                                 $0.setdismiss(DismissAction(action: { navigator.value.navigateBack() }))
                                 return ComposeResult.ok
                             } in: {
-                                let arguments = NavigationEntryArguments(isRoot: false, state: state, safeArea: safeArea, ignoresSafeAreaEdges: ignoresSafeAreaEdges, title: title.value.reduced, toolbarPreferences: toolbarPreferences.value.reduced)
+                                let arguments = NavigationEntryArguments(isRoot: false, state: state, safeArea: safeArea, ignoresSafeAreaEdges: actualExpandedEdges, title: title.value.reduced, toolbarPreferences: toolbarPreferences.value.reduced)
                                 PreferenceValues.shared.collectPreferences([titleCollector, toolbarPreferencesCollector, toolbarContentPreferencesCollector, destinationsCollector, destinationLayoutHintsCollector]) {
                                     RenderEntry(navigator: navigator, toolbarContent: toolbarContentPreferences, arguments: arguments, context: context) { context in
                                         let destinationArguments = NavigationDestinationArguments(targetValue: targetValue)
