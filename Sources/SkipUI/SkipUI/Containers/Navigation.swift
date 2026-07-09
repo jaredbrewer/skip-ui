@@ -596,10 +596,15 @@ public struct NavigationStack : View, Renderable {
                 let contentSafeArea = arguments.safeArea?
                     .insetting(.top, to: topBarBottomPx.value)
                     .insetting(.bottom, to: bottomBarTopPx.value)
-                // Inset manually for any edge where our container ignored the safe area, but we aren't showing a bar
-                let topPadding = topBarBottomPx.value <= Float(0.0) && arguments.ignoresSafeAreaEdges.contains(.top) ? WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding() : 0.dp
+                // Inset manually for any edge where our container ignored the safe area, but we aren't showing a bar.
+                // When a bar is explicitly hidden (.hidden visibility), do NOT fall back
+                // to safeTopDp / safeBottomDp. The parent layout has already consumed the system inset; applying
+                // it here double-counts the gap. The guard is narrow: automatic-hide (title-less root) is
+                // unaffected. Only .toolbarVisibility(.hidden, for: .navigationBar) / .bottomBar triggers it.
+                // Mirrors the same guard in the v2 Box layout below.
+                let topPadding = topBarBottomPx.value <= Float(0.0) && topBarPreferences?.visibility != .hidden && arguments.ignoresSafeAreaEdges.contains(.top) ? WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding() : 0.dp
                 var bottomPadding = 0.dp
-                if bottomBarTopPx.value <= Float(0.0) && arguments.ignoresSafeAreaEdges.contains(.bottom) {
+                if bottomBarTopPx.value <= Float(0.0) && bottomBarPreferences?.visibility != .hidden && arguments.ignoresSafeAreaEdges.contains(.bottom) {
                     bottomPadding = max(0.dp, WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding() - WindowInsets.ime.asPaddingValues().calculateBottomPadding())
                 }
                 let contentModifier = Modifier.fillMaxWidth().weight(Float(1.0)).padding(top: topPadding, bottom: bottomPadding)
@@ -673,9 +678,27 @@ public struct NavigationStack : View, Renderable {
                 var contentModifier = Modifier.fillMaxSize()
                 let safeTopDp = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding()
                 let topBarHeightDp = with(density) { topBarHeightPx.value.toDp() }
-                let topPadding = arguments.ignoresSafeAreaEdges.contains(.top) ? max(topBarHeightDp, safeTopDp) : topBarHeightDp
-                let bottomPadding = bottomBarHeightPx.value <= Float(0.0) && arguments.ignoresSafeAreaEdges.contains(.bottom) ?
-                        max(0.dp, WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding() - WindowInsets.ime.asPaddingValues().calculateBottomPadding()) : with(density) { bottomBarHeightPx.value.toDp() }
+                // When a bar is explicitly hidden (.hidden visibility), do NOT fall
+                // back to safeTopDp / safeBottomDp. The parent layout has already consumed the system inset,
+                // so applying it here double-counts the gap. The guard fires ONLY when visibility == .hidden;
+                // automatic-hide (title-less root, topBarHeightDp == 0) is unaffected. Symmetric for bottom.
+                // Mirrors the same guard in the v1 Column layout above.
+                let topPadding: Dp
+                if topBarPreferences?.visibility == .hidden && arguments.ignoresSafeAreaEdges.contains(.top) {
+                    topPadding = 0.dp
+                } else if arguments.ignoresSafeAreaEdges.contains(.top) {
+                    topPadding = max(topBarHeightDp, safeTopDp)
+                } else {
+                    topPadding = topBarHeightDp
+                }
+                let bottomPadding: Dp
+                if bottomBarPreferences?.visibility == .hidden && arguments.ignoresSafeAreaEdges.contains(.bottom) {
+                    bottomPadding = 0.dp
+                } else if bottomBarHeightPx.value <= Float(0.0) && arguments.ignoresSafeAreaEdges.contains(.bottom) {
+                    bottomPadding = max(0.dp, WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding() - WindowInsets.ime.asPaddingValues().calculateBottomPadding())
+                } else {
+                    bottomPadding = with(density) { bottomBarHeightPx.value.toDp() }
+                }
                 contentModifier = contentModifier.padding(top: topPadding, bottom: bottomPadding)
                 Box(modifier: contentModifier, contentAlignment: androidx.compose.ui.Alignment.Center) {
                     var topPadding = 0.dp
