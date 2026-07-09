@@ -94,7 +94,13 @@ Skip Pull Request Checklist:
 
 - [x] AI was used to generate or assist with generating this PR. *Please specify below how you used AI to help you, and what steps you have taken to manually verify the changes*.
 
-**AI use & verification:** The diagnosis, fix, tests, and this PR text were developed with substantial AI assistance (Claude). Behavioral verification: the defect was confirmed on Samsung Galaxy A17 (SM-A176U1, Android 16, build BP4A.251205.006); a button inside a `CompositionLocalProvider(LocalRippleConfiguration provides null)` container showed the default M3 ripple at stock and no ripple after the fix. The full SkipUI test suite was run on both the Swift-native and skipstone-transpiled Kotlin sides with zero new failures vs the base tag.
+**AI use & verification:** The diagnosis, fix, tests, and this PR text were developed with substantial AI assistance (Claude).
+
+**Reproduction scope**: this fix is exclusively in the transpiled (skipstone) Kotlin path. A SkipFuse-native MRE app (Swift compiled to `libSkipUI.so`) cannot exhibit the defect because the `.material3Ripple { _ in nil }` SwiftUI modifier is wrapped in `#if SKIP` — the modifier is absent from both stock and fork SkipFuse builds, making stock and fork provably identical in that app. Emulator capture of this defect via a SkipFuse MRE was attempted on AVD `fianchetto_avd` (Android 14, SwiftShader) and confirmed NOT APPLICABLE; the finding is settled.
+
+**Primary evidence (code inspection + JUnit)**: (1) Generated-Kotlin diff: stock `Button.kt` calls `.clickable(onClick = action, enabled = isEnabled)` with no `indication` parameter, so `LocalIndication.current` (M1 ripple) resolves at call time and ignores `LocalRippleConfiguration`. Fork `Button.kt` inserts `val rippleConfig = LocalRippleConfiguration.current` / `val rippleIndication = if (rippleConfig != null) LocalIndication.current else null` and passes `indication = rippleIndication` explicitly. (2) JUnit test `testNullRippleConfigurationSuppressesButtonIndication` in `SkipUITests.swift` models the indication-selection logic via `SKIP INSERT` Kotlin assertions and passes at the fixed branch. The full SkipUI test suite was run on both the Swift-native and skipstone-transpiled Kotlin sides with zero new failures vs the base tag.
+
+**In-app behavioral observation**: the defect was observed in a transpiled SkipUI app (full Fianchetto build, skipstone path) on Samsung Galaxy A17 (SM-A176U1, Android 16, build BP4A.251205.006), where a button inside a container with `LocalRippleConfiguration` set to `null` continued to show the default M3 ripple on stock. Reproducing this via the minimal MRE structure requires a transpiled (non-SkipFuse-native) app built with `skip app create`; see the Minimal Reproduction section above.
 
 ## Test Coverage
 

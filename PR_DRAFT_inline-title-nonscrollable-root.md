@@ -89,6 +89,8 @@ Skip Pull Request Checklist:
 
 **AI use & verification:** The diagnosis, fix, tests, and this PR text were developed with substantial AI assistance (Claude). Behavioral verification: the defect was confirmed on Samsung Galaxy A17 (SM-A176U1, Android 16, build BP4A.251205.006); a `NavigationStack` root `VStack` with `.navigationBarTitleDisplayMode(.inline)` rendered the expanded large bar at stock and the compact inline bar after the fix. The full SkipUI test suite was run on both the Swift-native and skipstone-transpiled Kotlin sides with zero new failures vs the base tag.
 
+**Emulator evidence (AVD `fianchetto_avd`, Android 14, SwiftShader):** NOT-REPRODUCED on emulator. Both stock (9f4345c) and fork APKs show a compact top bar (text block y=79–185, height ≈ 66 dp) and content start at y=264 px. Expected if bug reproduced (stock): LargeTopAppBar ≈ 427 px tall, content start ≈ 495 px. The ternary-slot-orphaning defect requires real Compose slot management under real SafeArea/WindowInsets propagation; SwiftShader's composition path does not trigger the mismatch. Physical-device confirmation (Samsung Galaxy A17) required to visually demonstrate the defect.
+
 ## Test Coverage
 
 `Tests/SkipUITests/SkipUITests.swift` adds three tests:
