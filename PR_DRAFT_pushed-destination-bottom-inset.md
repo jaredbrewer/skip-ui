@@ -1,0 +1,126 @@
+Thank you for contributing to the Skip project! Please review the contribution guide at https://skip.dev/docs/contributing/ for advice and guidance on making high-quality PRs.
+
+## Summary
+
+Fix: pass actual expanded edges into `NavigationEntryArguments` to correct pushed-destination bottom inset.
+
+When a `NavigationStack` is embedded inside a panel layout (e.g., a `VStack` containing a custom tab bar below the navigation content), pushed destinations receive an extra dead band at the bottom equal to one navigation-bar height. The `IgnoresSafeAreaLayout` node inside `NavigationStack` correctly determines via adjacency check that the stack is NOT adjacent to the system navigation-bar boundary — yet the initial candidate edge set (`ignoresSafeAreaEdges = [.bottom]`) was passed directly into `NavigationEntryArguments` instead of the adjacency-check result. `RenderEntry`'s bottom-padding guard then applied `navigationBars` inset padding because it saw `.bottom` in the edge set, even though the layout was not actually adjacent to the navigation bar. The fix passes `actualExpandedEdges` (the second closure parameter from `IgnoresSafeAreaLayout`) into `NavigationEntryArguments`, making the bottom-padding guard honor the true adjacency result. Zero iOS/macOS impact — the entire Compose layout path is guarded by `#if SKIP`.
+
+### Minimal Reproduction
+
+Paste into a SkipUI-backed Android app (e.g. `skip app create`):
+
+```swift
+import SwiftUI
+
+struct ReproducePushedDestinationInset: View {
+    var body: some View {
+        VStack(spacing: 0) {
+            NavigationStack {
+                NavigationLink("Push") {
+                    Color.green
+                        .ignoresSafeArea()
+                        .overlay(alignment: .bottom) {
+                            Text("Dead band below? Stock=YES Fix=NO")
+                                .foregroundStyle(.white)
+                                .padding(.bottom, 12)
+                        }
+                        .navigationTitle("Detail")
+                }
+                .navigationTitle("Root")
+            }
+            // Simulated custom tab bar forces NavigationStack off the nav-bar boundary:
+            Rectangle()
+                .fill(Color.gray.opacity(0.15))
+                .frame(height: 49)
+        }
+    }
+}
+
+#Preview { ReproducePushedDestinationInset() }
+```
+
+**At stock**: after tapping "Push", a blank band equal to one navigation-bar height (~48 dp / 135 px on Samsung Galaxy A17 (SM-A176U1)) appears at the bottom of the pushed destination's content area.
+
+**At this branch**: the pushed destination fills flush to the bottom of the navigation stack's content area; the dead band is absent.
+
+### Root Cause
+
+`Navigation.swift` captures `ignoresSafeAreaEdges` from the surrounding `View` modifier and passes it as both the `expandInto` and `checkEdges` parameters of `IgnoresSafeAreaLayout`, then uses the SAME outer-scope `ignoresSafeAreaEdges` variable inside the layout closure for `NavigationEntryArguments`:
+
+```swift
+// Stock — ignoresSafeAreaEdges used inside closure regardless of adjacency result:
+IgnoresSafeAreaLayout(expandInto: ignoresSafeAreaEdges, checkEdges: ignoresSafeAreaEdges, logTag: "NavigationStack") { _, _ in
+    // ...
+    let arguments = NavigationEntryArguments(
+        isRoot: true, ..., ignoresSafeAreaEdges: ignoresSafeAreaEdges, ...)
+    // ...
+    let arguments = NavigationEntryArguments(
+        isRoot: false, ..., ignoresSafeAreaEdges: ignoresSafeAreaEdges, ...)
+}
+```
+
+`IgnoresSafeAreaLayout` calls `adjacentSafeAreaEdges()` each frame and passes the result as the second closure parameter. When the `NavigationStack` is inside a panel layout, `adjacentSafeAreaEdges()` returns `{}` for `.bottom` (not adjacent to `safeBoundsPx.bottom`). But `ignoresSafeAreaEdges` (the outer variable, always `[.bottom]`) is used instead of the closure result, so `RenderEntry` always applies bottom padding.
+
+### The Fix
+
+Bind the second closure parameter (`actualExpandedEdges`) and use it in place of `ignoresSafeAreaEdges` when constructing `NavigationEntryArguments`:
+
+```swift
+// Before:
+IgnoresSafeAreaLayout(expandInto: ignoresSafeAreaEdges, checkEdges: ignoresSafeAreaEdges, logTag: "NavigationStack") { _, _ in
+    let arguments = NavigationEntryArguments(
+        isRoot: true, ..., ignoresSafeAreaEdges: ignoresSafeAreaEdges, ...)
+    // ...
+    let arguments = NavigationEntryArguments(
+        isRoot: false, ..., ignoresSafeAreaEdges: ignoresSafeAreaEdges, ...)
+}
+
+// After:
+IgnoresSafeAreaLayout(expandInto: ignoresSafeAreaEdges, checkEdges: ignoresSafeAreaEdges, logTag: "NavigationStack") { _, actualExpandedEdges in
+    let arguments = NavigationEntryArguments(
+        isRoot: true, ..., ignoresSafeAreaEdges: actualExpandedEdges, ...)
+    // ...
+    let arguments = NavigationEntryArguments(
+        isRoot: false, ..., ignoresSafeAreaEdges: actualExpandedEdges, ...)
+}
+```
+
+The change is two substitutions in the closure body. All other logic is unchanged. A standalone full-screen `NavigationStack` IS adjacent to `safeBoundsPx.bottom` on every frame, so `actualExpandedEdges` still contains `.bottom` and the padding is applied correctly; the fix does not regress the full-screen case.
+
+### Impact
+
+- **Android**: eliminates dead band on pushed destinations inside panel layouts (custom tab bars, split-pane, etc.) where `NavigationStack` is not adjacent to the system navigation-bar boundary.
+- **Full-screen NavigationStack**: unaffected — adjacency check returns `[.bottom]` and padding is applied as before.
+- **Root destinations**: fix applies to both root (`isRoot: true`) and pushed (`isRoot: false`) entries consistently.
+- **iOS / macOS**: no effect. The entire Compose layout path is inside `#if SKIP`.
+- **Top-edge path**: unaffected — the fix is in the bottom-edge `NavigationEntryArguments` construction only.
+
+---
+
+Skip Pull Request Checklist:
+
+- [ ] REQUIRED: I have signed the [Contributor Agreement](https://github.com/skiptools/clabot-config)
+- [x] REQUIRED: I have tested my change locally with `swift test`
+- [x] OPTIONAL: I have tested my change on an Android emulator or device
+- [ ] OPTIONAL: I have tested my change on an iOS simulator or device
+- [x] REQUIRED: I have checked whether this change requires a corresponding update in the [Skip Fuse UI](https://github.com/skiptools/skip-fuse-ui) repository
+- [ ] OPTIONAL: I have added an example of any UI changes to the [Showcase](https://github.com/skiptools/skipapp-showcase) sample app
+
+-----
+
+- [x] AI was used to generate or assist with generating this PR. *Please specify below how you used AI to help you, and what steps you have taken to manually verify the changes*.
+
+**AI use & verification:** The diagnosis, fix, tests, and this PR text were developed with substantial AI assistance (Claude). Behavioral verification: the defect was confirmed on Samsung Galaxy A17 (SM-A176U1, Android 16, build BP4A.251205.006) in an app context where a `NavigationStack` was hosted inside a `VStack` alongside a custom tab bar, producing a dead band at the bottom of pushed destinations consistent with one navigation-bar height (Samsung Galaxy A17 navigation bar measures 135 px = 48 dp). The full SkipUI test suite was run on both the Swift-native and skipstone-transpiled Kotlin sides with zero new failures vs the base tag.
+
+## Test Coverage
+
+`Tests/SkipUITests/SkipUITests.swift` adds two tests:
+
+1. **`testPushedDestinationAppliesBottomInsetOnce`** — uses `SKIP INSERT` Kotlin assertions to model the adjacency-check guard: (a) panel case — `actualExpandedEdges = {}`, so `panelPadding = 0f` (no dead band); (b) full-screen case — `actualExpandedEdges = {.bottom}`, so `fullPadding = navBarHeight` (correct). Skipped on iOS/macOS (no Kotlin runtime). **Note: this test passes at both stock and fixed branches** because it models the guard logic inline rather than exercising the production `Navigation.kt` path. In Robolectric, `WindowInsets.safeDrawing` returns 0, so the adjacency check cannot be driven to produce the failure condition via rendering. The test serves as a documented proof of the guard's correctness.
+
+2. **`testPushedDestinationRendersWithoutCrash`** — smoke test: `NavigationStack` with a pushed destination renders without crash.
+
+## Details
+
+**Skip Fuse UI Update Required**: No corresponding update needed in skip-fuse-ui. This is a pure SkipUI internal layout fix (inside `#if SKIP` block). The `NavigationEntryArguments` change affects only the Compose measurement path; the SwiftUI/native-fuse path is unaffected.
