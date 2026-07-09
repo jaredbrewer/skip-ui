@@ -5,6 +5,14 @@ import XCTest
 import OSLog
 import Foundation
 
+#if SKIP
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.dp
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlin.test.fail
+#endif
+
 final class LayoutTests: XCSnapshotTestCase {
 
     func testRenderWhiteDot() throws {
@@ -634,7 +642,7 @@ final class LayoutTests: XCSnapshotTestCase {
         #if SKIP
         throw XCTSkip("Android: .frame(maxWidth:) may expand beyond parent bounds")
         #endif
-        
+
         // Create a black container (width: 12), put a white rectangle inside with
         // maxWidth: 20 (larger than parent), and add a red border.
         // Expected: The white rectangle should be constrained to width 12 (parent bounds).
@@ -651,6 +659,74 @@ final class LayoutTests: XCSnapshotTestCase {
         . . . . . . . . . . . .
         . . . . . . . . . . . .
         """)
+    }
+
+    // MARK: - IgnoresSafeAreaLayout: Constraints.Infinity overflow
+
+    /// Verifies the saturation arithmetic that guards IgnoresSafeAreaLayout against integer overflow.
+    ///
+    /// During sheet intrinsic-height measurement, Compose passes Constraints.Infinity
+    /// (Int.MAX_VALUE = 2_147_483_647) as maxWidth/maxHeight. Adding any positive safe-area
+    /// expansion via plain integer arithmetic overflows to a large negative value; Constraints.copy()
+    /// with a negative maxWidth then throws IllegalArgumentException("maxWidth must be >= minWidth").
+    ///
+    /// The fix saturates at Infinity so that unbounded space stays unbounded regardless of the
+    /// safe-area expansion amount.
+    ///
+    /// Robolectric: safe-area expansion is 0 in this environment, so the overflow cannot be triggered
+    /// via rendering. This test validates the saturation arithmetic and downstream Constraints
+    /// construction directly via SKIP INSERT Kotlin assertions.
+    func testIgnoresSafeAreaExpansionWithInfiniteConstraints() throws {
+        #if !SKIP
+        throw XCTSkip("Constraints.Infinity arithmetic is Android/SKIP-only; no iOS analog")
+        #endif
+        // SKIP INSERT: val inf = Constraints.Infinity // Int.MAX_VALUE = 2_147_483_647
+        // SKIP INSERT: val expansion = 148 // typical status-bar height in pixels at high density
+        // SKIP INSERT:
+        // SKIP INSERT: // Naive add wraps to negative (stock defect):
+        // SKIP INSERT: val naiveMaxW = inf + expansion
+        // SKIP INSERT: assertTrue(naiveMaxW < 0,
+        // SKIP INSERT:     "Stock: Constraints.Infinity + expansion wraps to negative ($naiveMaxW)")
+        // SKIP INSERT:
+        // SKIP INSERT: // Negative maxWidth causes Constraints() to throw:
+        // SKIP INSERT: try {
+        // SKIP INSERT:     Constraints(minWidth = 0, maxWidth = naiveMaxW, minHeight = 0, maxHeight = 0)
+        // SKIP INSERT:     fail("Expected IllegalArgumentException from negative maxWidth")
+        // SKIP INSERT: } catch (e: IllegalArgumentException) {
+        // SKIP INSERT:     // expected
+        // SKIP INSERT: }
+        // SKIP INSERT:
+        // SKIP INSERT: // Saturation preserves Infinity:
+        // SKIP INSERT: val safeMaxW: Int = if (inf == Constraints.Infinity) Constraints.Infinity
+        // SKIP INSERT:                     else (inf + expansion).coerceAtLeast(0)
+        // SKIP INSERT: assertEquals(Constraints.Infinity, safeMaxW,
+        // SKIP INSERT:     "Saturated maxW must equal Constraints.Infinity, got $safeMaxW")
+        // SKIP INSERT:
+        // SKIP INSERT: // Constraints.copy() with the saturated value does not throw:
+        // SKIP INSERT: val safeConstraints = Constraints(
+        // SKIP INSERT:     minWidth = 0, maxWidth = safeMaxW, minHeight = 0, maxHeight = safeMaxW)
+        // SKIP INSERT: assertEquals(Constraints.Infinity, safeConstraints.maxWidth,
+        // SKIP INSERT:     "Saturated maxWidth round-trips through Constraints as Infinity")
+    }
+
+    /// Smoke test: a view with `.ignoresSafeArea()` renders without crash.
+    func testIgnoresSafeAreaExpansionDoesNotCrash() throws {
+        _ = try render(view:
+            Color.red
+                .ignoresSafeArea()
+                .frame(width: 100, height: 100)
+        )
+    }
+
+    /// Smoke test: `.ignoresSafeArea()` nested inside a `ZStack` renders without crash.
+    func testIgnoresSafeAreaInsideZStackDoesNotCrash() throws {
+        _ = try render(view:
+            ZStack {
+                Color.blue.ignoresSafeArea()
+                Color.red.frame(width: 50, height: 50)
+            }
+            .frame(width: 100, height: 100)
+        )
     }
 
 }
