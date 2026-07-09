@@ -1,24 +1,40 @@
 #!/usr/bin/env bash
-# scripts/rebase-onto-upstream.sh — advance patches/1.57.0 onto a new upstream SkipUI tag.
+# scripts/rebase-onto-upstream.sh — advance the current patches branch onto a new upstream SkipUI tag.
 #
 # Usage:
-#   source /path/to/fianchetto_env.sh   # sets JAVA_HOME, PATH
+#   source /path/to/fianchetto_env.sh   # sets JAVA_HOME, ANDROID_HOME, PATH
+#   # Create and check out the new patches branch first, e.g.:
+#   #   git checkout -b patches/1.59.0 fork/patches/1.58.0
 #   scripts/rebase-onto-upstream.sh <upstream-tag>
 #
 # The script:
-#   1. Verifies that JAVA_HOME is set and the dual-side suite prerequisites are met.
-#   2. Fetches the specified tag from the upstream remote (origin).
-#   3. Rebases the patches/1.57.0 branch onto the tag.
+#   1. Verifies that JAVA_HOME and ANDROID_HOME are set and prerequisites are met.
+#   2. Fetches the specified tag from the upstream remote.
+#   3. Rebases the current patches branch onto the tag.
 #   4. Runs the full dual-side suite (swift test) and verifies the JUNIT summary line.
 #   5. Prints a pass/fail report and exits non-zero on any failure.
 #
 # Drop any fix commits whose upstream PRs have been merged BEFORE running this script.
 # The app should then be re-pinned to the new annotated tag created after a successful rebase.
+#
+# Known gaps (to be addressed in a future pass):
+#   - PATCHES_BRANCH is still compared against the current branch; the check below should
+#     accept any patches/X.Y.Z branch, not a hardcoded name.
+#   - UPSTREAM_REMOTE should be a configurable variable pointing at skiptools/skip-ui
+#     (the upstream origin), not the fork remote.  In this repo the upstream is typically
+#     named "upstream"; "origin" points at the local SPM checkout, not GitHub.
+#   - The script does not create the new patches branch — the caller must do so first.
+#   - The script does not rebase the five fix/* branches onto the new tag.
+#   - The script does not create the annotated tag (it prints instructions instead).
+#   - The script does not push to the fork remote.
+#   - The script does not update FORK.md.
 
 set -euo pipefail
 
-UPSTREAM_REMOTE="origin"
-PATCHES_BRANCH="patches/1.57.0"
+# Set UPSTREAM_REMOTE to whichever remote tracks skiptools/skip-ui in your clone.
+# In a fresh clone from the fork, add: git remote add upstream https://github.com/skiptools/skip-ui.git
+UPSTREAM_REMOTE="upstream"
+PATCHES_BRANCH="patches/1.58.0"
 
 # ── argument check ────────────────────────────────────────────────────────────
 
@@ -40,6 +56,14 @@ fi
 
 if ! java -version &>/dev/null; then
     echo "ERROR: java not found on PATH (JAVA_HOME=$JAVA_HOME). Check your environment." >&2
+    exit 1
+fi
+
+if [[ -z "${ANDROID_HOME:-}" ]]; then
+    echo "ERROR: ANDROID_HOME is not set. Source the environment file first:" >&2
+    echo "  source /path/to/fianchetto_env.sh" >&2
+    echo "  (Without ANDROID_HOME the Gradle/Robolectric side silently does not run;" >&2
+    echo "   the JUNIT SUITES summary line will be absent and the suite check will fail.)" >&2
     exit 1
 fi
 
