@@ -235,7 +235,17 @@ private func flexibleLayoutFloat(_ value: CGFloat?) -> Float? {
             guard !measurables.isEmpty() else {
                 return layout(width: 0, height: 0) {}
             }
-            let updatedConstraints = constraints.copy(maxWidth: constraints.maxWidth + expansionLeft + expansionRight, maxHeight: constraints.maxHeight + expansionTop + expansionBottom)
+            // constraints.maxWidth/maxHeight can equal Constraints.Infinity
+            // (Int.MAX_VALUE = 2_147_483_647). Adding any positive expansion overflows to a large
+            // negative value, causing constraints.copy() to throw IllegalArgumentException
+            // ("maxWidth must be >= minWidth"). This crash occurs in sheets because sheet
+            // intrinsic-height measurement passes Constraints.Infinity for maxHeight while a
+            // nested .ignoresSafeArea() tries to expand by the navigation-bar pixel offset.
+            // Saturate at Infinity (unbounded space stays unbounded) and coerce to ≥ 0
+            // defensively to handle the edge case where safeBoundsPx > presentationBoundsPx.
+            // SKIP INSERT: val safeMaxW = if (constraints.maxWidth == Constraints.Infinity) Constraints.Infinity else (constraints.maxWidth + expansionLeft + expansionRight).coerceAtLeast(0)
+            // SKIP INSERT: val safeMaxH = if (constraints.maxHeight == Constraints.Infinity) Constraints.Infinity else (constraints.maxHeight + expansionTop + expansionBottom).coerceAtLeast(0)
+            let updatedConstraints = constraints.copy(maxWidth: safeMaxW, maxHeight: safeMaxH)
             let targetPlaceables = measurables.map { $0.measure(updatedConstraints) }
             layout(width: targetPlaceables[0].width, height: targetPlaceables[0].height) {
                 // Layout will center extra space by default
