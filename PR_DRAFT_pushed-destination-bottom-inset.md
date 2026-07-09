@@ -113,6 +113,8 @@ Skip Pull Request Checklist:
 
 **AI use & verification:** The diagnosis, fix, tests, and this PR text were developed with substantial AI assistance (Claude). Behavioral verification: the defect was confirmed on Samsung Galaxy A17 (SM-A176U1, Android 16, build BP4A.251205.006) in an app context where a `NavigationStack` was hosted inside a `VStack` alongside a custom tab bar, producing a dead band at the bottom of pushed destinations consistent with one navigation-bar height (Samsung Galaxy A17 navigation bar measures 135 px = 48 dp). The full SkipUI test suite was run on both the Swift-native and skipstone-transpiled Kotlin sides with zero new failures vs the base tag.
 
+**Emulator evidence (AVD `fianchetto_avd`, Android 14, SwiftShader):** NOT-REPRODUCED on emulator. Both stock (9f4345c) and fork APKs show marker_bottom = y=2193 px, dead band = 12 px (= 4.3 dp, matching the `.padding(.bottom, 4)` in the destination view). Expected dead band if reproduced: ≈ 135 px (1× nav-bar height). SwiftShader's constraint arithmetic does not trigger the adjacency-check failure path; physical-device confirmation (Samsung Galaxy A17) required to visually demonstrate the defect.
+
 ## Test Coverage
 
 `Tests/SkipUITests/SkipUITests.swift` adds two tests:
