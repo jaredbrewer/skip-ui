@@ -1,12 +1,12 @@
-# FORK.md — patches/1.57.0 divergence ledger
+# FORK.md — patches/1.58.0 divergence ledger
 
-This file records every change carried in this fork relative to upstream SkipUI 1.57.0 (tag `1.57.0`, commit `9f4345c`). It is the canonical place to check what has diverged, how to verify each fix, and when a fix can be dropped.
+This file records every change carried in this fork relative to upstream SkipUI 1.58.0 (tag `1.58.0`, commit `1901924`). It is the canonical place to check what has diverged, how to verify each fix, and when a fix can be dropped.
 
-**Integration branch:** `patches/1.57.0`
-**Fork tag:** `1.57.0+fixes.1`
-**App pinning rule:** pin the app's SkipUI dependency to the annotated tag `1.57.0+fixes.1`, not to the `patches/1.57.0` branch HEAD. Tags are stable; the branch HEAD advances as new fixes land.
+**Integration branch:** `patches/1.58.0`
+**Fork tag:** `1.58.0+fixes.1`
+**App pinning rule:** pin the app's SkipUI dependency to the annotated tag `1.58.0+fixes.1`, not to the `patches/1.58.0` branch HEAD. Tags are stable; the branch HEAD advances as new fixes land.
 
-**Drop rule:** when a fix is merged upstream, rebase `patches/1.57.0` onto the next upstream tag, drop the fix commit(s) for that fix, and re-run the dual-side suite before advancing the app's pin.
+**Drop rule:** when a fix is merged upstream, rebase `patches/1.58.0` onto the next upstream tag, drop the fix commit(s) for that fix, and re-run the dual-side suite before advancing the app's pin.
 
 ---
 
@@ -17,8 +17,8 @@ This file records every change carried in this fork relative to upstream SkipUI 
 **Files touched:** `Sources/SkipUI/SkipUI/Containers/ComposeLayouts.swift`
 
 **Fix branch:** `fix/ignores-safe-area-constraint-overflow`
-**Fix commit:** `7741609` — `fix: saturate Constraints.Infinity in IgnoresSafeAreaLayout to prevent integer-overflow crash on Android`
-**Test commit:** `e8313d0` — `test: add regression tests for IgnoresSafeAreaLayout constraint-overflow fix`
+**Fix commit:** `c1ec626` — `fix: saturate Constraints.Infinity in IgnoresSafeAreaLayout to prevent integer-overflow crash on Android`
+**Test commit:** `397b799` — `test: add regression tests for IgnoresSafeAreaLayout constraint-overflow fix`
 
 **Upstream PR placeholder:** _(pending submission)_
 
@@ -31,8 +31,8 @@ This file records every change carried in this fork relative to upstream SkipUI 
 **Files touched:** `Sources/SkipUI/SkipUI/Containers/Navigation.swift`
 
 **Fix branch:** `fix/hidden-toolbar-safe-area-inset`
-**Fix commit:** `91f3a7b` — `fix: suppress safe-area inset fallback in NavigationStack when toolbar is explicitly hidden`
-**Test commit:** `61c4a07` — `test: add regression tests for NavigationStack hidden-toolbar safe-area guard`
+**Fix commit:** `1efd7c5` — `fix: suppress safe-area inset fallback in NavigationStack when toolbar is explicitly hidden`
+**Test commit:** `3a301a7` — `test: add regression tests for NavigationStack hidden-toolbar safe-area guard`
 
 **Upstream PR placeholder:** _(pending submission — see PR_DRAFT_2a.md)_
 
@@ -45,8 +45,8 @@ This file records every change carried in this fork relative to upstream SkipUI 
 **Files touched:** `Sources/SkipUI/SkipUI/Containers/Navigation.swift`
 
 **Fix branch:** `fix/pushed-destination-bottom-inset`
-**Fix commit:** `3948d7f` — `fix: pass actual expanded edges into NavigationEntryArguments to correct pushed-destination bottom inset`
-**Test commit:** `3b7fde3` — `test: add regression tests for NavigationStack pushed-destination bottom-inset fix`
+**Fix commit:** `91bdf77` — `fix: pass actual expanded edges into NavigationEntryArguments to correct pushed-destination bottom inset`
+**Test commit:** `a538cf6` — `test: add regression tests for NavigationStack pushed-destination bottom-inset fix`
 
 **Upstream PR placeholder:** _(pending submission — see PR_DRAFT_pushed-destination-bottom-inset.md)_
 
@@ -59,8 +59,8 @@ This file records every change carried in this fork relative to upstream SkipUI 
 **Files touched:** `Sources/SkipUI/SkipUI/Containers/Navigation.swift`
 
 **Fix branch:** `fix/inline-title-nonscrollable-root`
-**Fix commit:** `84bda76` — `fix: pre-create both TopAppBar scroll behaviors at composition scope`
-**Test commit:** `ad1e7c4` — `test: add regression tests for NavigationStack inline title on non-scrollable roots`
+**Fix commit:** `e7462c6` — `fix: pre-create both TopAppBar scroll behaviors at composition scope`
+**Test commit:** `bb9074a` — `test: add regression tests for NavigationStack inline title on non-scrollable roots`
 
 **Upstream PR placeholder:** _(pending submission — see PR_DRAFT_inline-title-nonscrollable-root.md)_
 
@@ -73,8 +73,8 @@ This file records every change carried in this fork relative to upstream SkipUI 
 **Files touched:** `Sources/SkipUI/SkipUI/Controls/Button.swift`
 
 **Fix branch:** `fix/button-ripple-configuration`
-**Fix commit:** `8160f01` — `fix: propagate LocalRippleConfiguration to Button clickable indication`
-**Test commit:** `b5b50a2` — `test: add regression tests for Button LocalRippleConfiguration propagation`
+**Fix commit:** `f31f8e4` — `fix: propagate LocalRippleConfiguration to Button clickable indication`
+**Test commit:** `827ce6d` — `test: add regression tests for Button LocalRippleConfiguration propagation`
 
 **Upstream PR placeholder:** _(pending submission — see PR_DRAFT_button-ripple-configuration.md)_
 
@@ -97,6 +97,17 @@ This file records every change carried in this fork relative to upstream SkipUI 
 
 ---
 
+## Rebase log
+
+### 1.57.0 → 1.58.0 (2026-07-09)
+
+- **Upstream range:** `9f4345c..1901924` (7 upstream commits)
+- **Upstream files changed:** `Color.swift`, `ContextMenu.swift`, `List.swift`, `DatePicker.swift`, `Picker.swift`, `EnvironmentValues.swift`, `TextField.swift` — zero overlap with our five patched files
+- **Conflicts:** none
+- **Suite result:** PASS — `JUNIT SUITES 9 TESTS 104 PASSED 102 (98.0%) FAILED 0 SKIPPED 2 TIME 128.56` (matches 1.57.0 baseline: 104 tests, 0 failures, 2 upstream Robolectric skips)
+
+---
+
 ## Rebase procedure
 
-Use `scripts/rebase-onto-upstream.sh <new-upstream-tag>` to advance the integration branch. The script fetches the upstream tag, rebases `patches/1.57.0` onto it, runs the dual-side suite, and prints the JUNIT summary. It refuses to exit cleanly on suite failure. Drop fix commits whose upstream PRs have been merged before running the rebase.
+Use `scripts/rebase-onto-upstream.sh <new-upstream-tag>` to advance the integration branch. The script fetches the upstream tag, rebases `patches/1.58.0` onto it, runs the dual-side suite, and prints the JUNIT summary. It refuses to exit cleanly on suite failure. Drop fix commits whose upstream PRs have been merged before running the rebase.
