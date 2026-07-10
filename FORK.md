@@ -17,8 +17,8 @@ This file records every change carried in this fork relative to upstream SkipUI 
 **Files touched:** `Sources/SkipUI/SkipUI/Containers/ComposeLayouts.swift`
 
 **Fix branch:** `fix/ignores-safe-area-constraint-overflow`
-**Fix commit:** `c1ec626` — `fix: saturate Constraints.Infinity in IgnoresSafeAreaLayout to prevent integer-overflow crash on Android`
-**Test commit:** `397b799` — `test: add regression tests for IgnoresSafeAreaLayout constraint-overflow fix`
+**Fix commit:** `73e7a54` — `fix: saturate Constraints.Infinity in IgnoresSafeAreaLayout to prevent integer-overflow crash on Android`
+**Test commit:** `4be0dbc` — `test: add regression tests for IgnoresSafeAreaLayout constraint-overflow fix`
 
 **Upstream PR placeholder:** _(pending submission)_
 
@@ -31,8 +31,8 @@ This file records every change carried in this fork relative to upstream SkipUI 
 **Files touched:** `Sources/SkipUI/SkipUI/Containers/Navigation.swift`
 
 **Fix branch:** `fix/hidden-toolbar-safe-area-inset`
-**Fix commit:** `1efd7c5` — `fix: suppress safe-area inset fallback in NavigationStack when toolbar is explicitly hidden`
-**Test commit:** `3a301a7` — `test: add regression tests for NavigationStack hidden-toolbar safe-area guard`
+**Fix commit:** `d86ea68` — `fix: suppress safe-area inset fallback in NavigationStack when toolbar is explicitly hidden`
+**Test commit:** `5e14c03` — `test: add regression tests for NavigationStack hidden-toolbar safe-area guard`
 
 **Upstream PR placeholder:** _(pending submission — see PR_DRAFT_2a.md)_
 
@@ -45,8 +45,8 @@ This file records every change carried in this fork relative to upstream SkipUI 
 **Files touched:** `Sources/SkipUI/SkipUI/Containers/Navigation.swift`
 
 **Fix branch:** `fix/pushed-destination-bottom-inset`
-**Fix commit:** `91bdf77` — `fix: pass actual expanded edges into NavigationEntryArguments to correct pushed-destination bottom inset`
-**Test commit:** `a538cf6` — `test: add regression tests for NavigationStack pushed-destination bottom-inset fix`
+**Fix commit:** `b2f7d58` — `fix: pass actual expanded edges into NavigationEntryArguments to correct pushed-destination bottom inset`
+**Test commit:** `f40a9c5` — `test: add regression tests for NavigationStack pushed-destination bottom-inset fix`
 
 **Upstream PR placeholder:** _(pending submission — see PR_DRAFT_pushed-destination-bottom-inset.md)_
 
@@ -59,8 +59,8 @@ This file records every change carried in this fork relative to upstream SkipUI 
 **Files touched:** `Sources/SkipUI/SkipUI/Containers/Navigation.swift`
 
 **Fix branch:** `fix/inline-title-nonscrollable-root`
-**Fix commit:** `e7462c6` — `fix: pre-create both TopAppBar scroll behaviors at composition scope`
-**Test commit:** `bb9074a` — `test: add regression tests for NavigationStack inline title on non-scrollable roots`
+**Fix commit:** `5170538` — `fix: pre-create both TopAppBar scroll behaviors at composition scope`
+**Test commit:** `9c59fb3` — `test: add regression tests for NavigationStack inline title on non-scrollable roots`
 
 **Upstream PR placeholder:** _(pending submission — see PR_DRAFT_inline-title-nonscrollable-root.md)_
 
@@ -73,8 +73,8 @@ This file records every change carried in this fork relative to upstream SkipUI 
 **Files touched:** `Sources/SkipUI/SkipUI/Controls/Button.swift`
 
 **Fix branch:** `fix/button-ripple-configuration`
-**Fix commit:** `f31f8e4` — `fix: propagate LocalRippleConfiguration to Button clickable indication`
-**Test commit:** `827ce6d` — `test: add regression tests for Button LocalRippleConfiguration propagation`
+**Fix commit:** `e87c50e` — `fix: propagate LocalRippleConfiguration to Button clickable indication`
+**Test commit:** `696ec8a` — `test: add regression tests for Button LocalRippleConfiguration propagation`
 
 **Upstream PR placeholder:** _(pending submission — see PR_DRAFT_button-ripple-configuration.md)_
 
