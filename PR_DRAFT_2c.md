@@ -87,7 +87,7 @@ let updatedConstraints = constraints.copy(maxWidth: safeMaxW, maxHeight: safeMax
 
 Skip Pull Request Checklist:
 
-- [x] REQUIRED: I have signed the [Contributor Agreement](https://github.com/skiptools/clabot-config)
+- [ ] REQUIRED: I have signed the [Contributor Agreement](https://github.com/skiptools/clabot-config) <!-- OWNER: sign before submitting, then check -->
 - [x] REQUIRED: I have tested my change locally with `swift test`
 - [x] OPTIONAL: I have tested my change on an Android emulator or device
 - [ ] OPTIONAL: I have tested my change on an iOS simulator or device
