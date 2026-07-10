@@ -1,17 +1,22 @@
 # Minimal Reproduction Examples
 
-Paste each snippet into a SkipUI-backed Android app (e.g. via `skip app create`). All snippets are self-contained with no external dependencies. Each section states honestly what has and has not been observed at runtime; see `EVIDENCE.md` (in `~/Documents/skipui-mre/`) for the full measurement record.
+Paste each snippet into a SkipUI-backed Android app (e.g. via `skip app create`). All snippets are self-contained with no external dependencies. Each section states honestly what has and has not been observed at runtime; see `EVIDENCE.md` (in `~/Documents/skipui-mre/evidence/`) for the full measurement record.
 
 ---
 
-## `IgnoresSafeAreaLayout` overflow guard (regression surface — crash never captured)
+## `IgnoresSafeAreaLayout` overflow guard (crash captured on device 2026-07-10; this snippet is a regression surface and does NOT crash)
 
-**Class**: `IgnoresSafeAreaLayout` expands constraints with plain integer arithmetic. If an unbounded constraint (`Constraints.Infinity` = `Int.MAX_VALUE`) reaches this path with a positive safe-area expansion, the addition wraps to a negative value and `Constraints.copy()` throws by precondition:
+**Class**: `IgnoresSafeAreaLayout` expands constraints with plain integer arithmetic. If an unbounded constraint (`Constraints.Infinity` = `Int.MAX_VALUE`) reaches this path with a positive safe-area expansion, the addition wraps to a negative value and `Constraints.copy()` throws by precondition. Verbatim trace from the device capture (Samsung Galaxy A17 (SM-A176U1), Android 16 (SDK 36), One UI 8.5, build BP4A.251205.006, 3-button navigation):
 ```
-java.lang.IllegalArgumentException: maxWidth must be >= minWidth
+FATAL EXCEPTION: main
+java.lang.IllegalArgumentException: maxWidth must be >= than minWidth,
+maxHeight must be >= than minHeight, minWidth and minHeight must be >= 0
+  at skip.ui.ComposeLayoutsKt$IgnoresSafeAreaLayout$6$2.measure-3p2s80s(ComposeLayouts.kt:239)
+  at skip.ui.ComposeLayoutsKt$IgnoresSafeAreaLayout$6$2.maxIntrinsicHeight(ComposeLayouts.kt:235)
+  at skip.ui.ComposeLayoutsKt$TargetViewLayout$1$1$1.measure-3p2s80s(ComposeLayouts.kt:128)
 ```
 
-**Honest status**: this crash has never been captured in any tested environment. The snippet below opens without crashing at stock on API-34/36/37 emulators, on a physical Samsung Galaxy A17 (Android 16), on Firebase Test Lab devices (Galaxy S22, Pixel 10 Pro), and in a production-scale app A/B at skip-ui 1.58.0. At the current Compose BOM the modal measurement path bounds the constraints before the arithmetic (`PresentationRoot` safe-area padding; `TargetViewLayout` finite bounds). The fix is defensive hardening — the overflow class is eliminated by construction — and this snippet is the regression surface that exercises the guarded path.
+**Honest status**: the crash IS captured — deterministically, on device (2026-07-10). A production SkipFuse app carried a contemporaneous workaround (background `.ignoresSafeArea()` deliberately omitted with a comment that "double-nesting crashes"); reverting that single modifier under stock skip-ui 1.57.0 (the guarded code is unchanged between 1.57.0 and 1.58.0) crashes on the first sheet open, and identical source survives on the fixed branch. The trigger requires three ingredients at once: (1) sheet presentation, whose `TargetViewLayout` intrinsic-height pass delivers `Constraints.Infinity`; (2) the `NavigationStack` scaffold's own `IgnoresSafeAreaLayout`; (3) a second nested `IgnoresSafeAreaLayout` from `.ignoresSafeArea()` on the content background. The minimal snippet below does NOT crash at stock — it opened cleanly on API-34/36/37 emulators, on the physical Samsung Galaxy A17, on Firebase Test Lab devices (Galaxy S22, Pixel 10 Pro), and in the production-scale app A/B at skip-ui 1.58.0 with the workaround in place — because in a shallow composition the presentation root bounds the constraints before the arithmetic (`PresentationRoot` safe-area padding; `TargetViewLayout` finite bounds). This snippet is the regression surface that exercises the guarded path; the reproduction lives in the workaround-reverted app A/B (see `EVIDENCE.md`).
 
 ```swift
 import SwiftUI
@@ -55,7 +60,7 @@ let topPadding = arguments.ignoresSafeAreaEdges.contains(.top)
     : topBarHeightDp
 ```
 
-**At stock (9f4345c)**: measured on physical Samsung Galaxy A17 (Android 16, status bar 100 px, density 2.8125 px/dp): content-area top at y=200 — one extra status-bar height (100 px = 35.6 dp) below the status-bar bottom (y=100). **At this branch**: content-area top at y=100, flush below the status bar. Delta: 100 px = 1× status bar.
+**At stock (9f4345c)**: measured on a physical Samsung Galaxy A17 (SM-A176U1), Android 16 (status bar 100 px, density 2.8125 px/dp): content-area top at y=200 — one extra status-bar height (100 px = 35.6 dp) below the status-bar bottom (y=100). **At this branch**: content-area top at y=100, flush below the status bar. Delta: 100 px = 1× status bar.
 
 ```swift
 import SwiftUI
@@ -119,5 +124,5 @@ struct ReproduceNavigationBottomInsetDouble: View {
 
 - Robolectric sets all `WindowInsets.safeDrawing` values to 0, so neither issue is observable in the automated test suite.
 - The double-inset reproduction requires a physical Android device (or an emulator reporting nonzero insets) plus the host-pays-inset wrapper shown; it was measured on a Samsung Galaxy A17 (100 px delta).
-- The overflow snippet is a regression surface only: the crash has not been reproduced in any environment to date (emulators, physical device, Firebase Test Lab, production-scale A/B all opened the sheet without crashing at stock).
+- The overflow snippet is a regression surface only: it does not crash at stock in any tested environment (emulators, physical device, Firebase Test Lab, production-scale A/B with the app-level workaround in place all opened the sheet cleanly). The crash itself was captured on device on 2026-07-10 via the workaround-reverted production app — the minimal snippet lacks the composition depth for the three-ingredient trigger; see `EVIDENCE.md`.
 - To test at stock: point `Package.swift` at the fork's path dep, then `git stash` the fix commits in the local skip-ui checkout, rebuild, install, compare.

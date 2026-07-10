@@ -3,7 +3,7 @@
 This file records every change carried in this fork relative to upstream SkipUI 1.58.0 (tag `1.58.0`, commit `1901924`). It is the canonical place to check what has diverged, how to verify each fix, and when a fix can be dropped.
 
 **Integration branch:** `patches/1.58.0`
-**Fork tag:** `1.58.0+fixes.1`
+**Fork tag:** `1.58.0+fixes.1` (= `d518f5c543b147815f1ec2922b8160e1fe8f4774`)
 **App pinning rule:** pin the app's SkipUI dependency to the annotated tag `1.58.0+fixes.1`, not to the `patches/1.58.0` branch HEAD. Tags are stable; the branch HEAD advances as new fixes land.
 
 **Drop rule:** when a fix is merged upstream, rebase `patches/1.58.0` onto the next upstream tag, drop the fix commit(s) for that fix, and re-run the dual-side suite before advancing the app's pin.
@@ -12,9 +12,9 @@ This file records every change carried in this fork relative to upstream SkipUI 
 
 ## Fix 1 — IgnoresSafeAreaLayout `Constraints.Infinity` overflow crash
 
-**Defect (latent class):** `IgnoresSafeAreaLayout` in `ComposeLayouts.swift` performs plain integer arithmetic to expand constraints by the safe-area inset. If an unbounded constraint (`Constraints.Infinity` = `Int.MAX_VALUE = 2_147_483_647`) reaches this path with a positive expansion (e.g., the navigation-bar inset), the addition wraps to a large negative value; `Constraints.copy()` with a negative `maxWidth` throws `IllegalArgumentException: maxWidth must be >= minWidth`.
+**Defect:** `IgnoresSafeAreaLayout` in `ComposeLayouts.swift` performs plain integer arithmetic to expand constraints by the safe-area inset. If an unbounded constraint (`Constraints.Infinity` = `Int.MAX_VALUE = 2_147_483_647`) reaches this path with a positive expansion (e.g., the navigation-bar inset), the addition wraps to a large negative value; `Constraints.copy()` with a negative max throws `IllegalArgumentException` mid-measure — a hard crash.
 
-**Evidence status:** the crash has never been captured in any recorded environment — sheets with `.ignoresSafeArea()` content opened without crashing at stock on the AVD, on API-34/36/37 emulators, on the physical Samsung Galaxy A17 (Android 16), on Firebase Test Lab (Galaxy S22, Pixel 10 Pro), and in the production-app A/B at 1.58.0 (see `EVIDENCE.md`). At the tested Compose BOM the modal measurement path bounds the inner node before the arithmetic (`PresentationRoot` padding, `TargetViewLayout` finite bounds). The fix is defensive hardening: the overflow class is eliminated by construction, at zero cost on finite constraints.
+**Evidence status:** deterministic device crash captured 2026-07-10 on the Samsung Galaxy A17 (SM-A176U1), Android 16 (SDK 36), One UI 8.5, build BP4A.251205.006, 3-button navigation. The production app carried a contemporaneous workaround comment (background `.ignoresSafeArea()` deliberately omitted because "double-nesting crashes"); reverting that single modifier under stock skip-ui 1.57.0 (the guarded code is unchanged between 1.57.0 and 1.58.0) crashes on the first sheet open with the verbatim trace at the guarded `ComposeLayouts` lines, and identical source survives on this fork (and renders the intended edge-to-edge background). Trigger chain (all three required): sheet presentation delivering `Constraints.Infinity` via `TargetViewLayout`'s intrinsic-height pass → the `NavigationStack` scaffold's own `IgnoresSafeAreaLayout` → a second nested `IgnoresSafeAreaLayout` from `.ignoresSafeArea()` on the content background. Earlier non-reproductions (AVD, API-34/36/37 emulators, the A17 MRE, Firebase Test Lab (Galaxy S22, Pixel 10 Pro), and the production-app A/B at stock 1.58.0 with the workaround in place — see `EVIDENCE.md`) are all explained: the trigger was absent, either worked around at the app level or bounded away by the presentation root in minimal compositions. The minimal MRE snippet still does not crash. The guard eliminates the class by construction, at zero cost on finite constraints.
 
 **Files touched:** `Sources/SkipUI/SkipUI/Containers/ComposeLayouts.swift`
 
@@ -28,7 +28,7 @@ This file records every change carried in this fork relative to upstream SkipUI 
 
 ## Fix 2 — NavigationStack hidden-toolbar safe-area inset double-application
 
-**Defect:** When `.toolbarVisibility(.hidden, for: .navigationBar)` is applied inside a `NavigationStack`, the Compose layout falls back to `WindowInsets.safeDrawing.calculateTopPadding()` as content padding even though the bar height is zeroed. If the parent layout already compensates for the system inset, the gap is double-counted, appearing as a blank band below the status bar. Measured on Samsung Galaxy A17 (SM-A176U1), Android 16: stock content area top `y=200 px`, fork content area top `y=100 px`, delta = 100 px = 1× status-bar height (35.6 dp at 2.8125 px/dp).
+**Defect:** When `.toolbarVisibility(.hidden, for: .navigationBar)` is applied inside a `NavigationStack`, the Compose layout falls back to `WindowInsets.safeDrawing.calculateTopPadding()` as content padding even though the bar height is zeroed. If the parent layout already compensates for the system inset, the gap is double-counted, appearing as a blank band below the status bar. Measured on the Samsung Galaxy A17 (SM-A176U1), Android 16 (SDK 36), One UI 8.5, build BP4A.251205.006, 3-button navigation: stock content area top `y=200 px`, fork content area top `y=100 px`, delta = 100 px = 1× status-bar height (35.6 dp at 2.8125 px/dp). Production-app A/B on the same device: Settings surface y=345 → y=245 (Δ=100 px); Firebase Test Lab directional corroboration: Galaxy S22 (SC-51C, One UI, API 36) Δ=44 px, Pixel 10 Pro (blazer, AOSP, API 36, gesture navigation) Δ=40 px (smaller because transparent/gesture insets are smaller).
 
 **Files touched:** `Sources/SkipUI/SkipUI/Containers/Navigation.swift`
 
@@ -44,7 +44,7 @@ This file records every change carried in this fork relative to upstream SkipUI 
 
 **Defect:** When a `NavigationStack` is embedded inside a panel layout (e.g., a `VStack` with a custom tab bar below the navigation content), pushed destinations display a dead band at the bottom equal to one navigation-bar height. The `IgnoresSafeAreaLayout` adjacency check correctly returns `{}` for the bottom edge (the stack is not adjacent to the system nav-bar boundary), but the initial candidate edge set `ignoresSafeAreaEdges = [.bottom]` was passed into `NavigationEntryArguments` instead of the closure's actual-expanded-edges result. `RenderEntry`'s bottom-padding guard then applied navigation-bar inset padding regardless. Samsung Galaxy A17 navigation bar measures 135 px (48 dp at 2.8125 px/dp); this is the expected dead-band size for affected layouts.
 
-**Evidence status:** confirmed at app scale — production-app A/B on the A17: stock dead band 310 px vs fork 175 px (Δ=135 px = 1× nav bar), with directional Firebase Test Lab corroboration on Pixel 10 Pro (Δ=55 px, gesture-nav quantum). The isolated MRE shows zero stock/fork differential on all five tested environments (the adjacency check already returns `{}` in both builds at minimal composition depth).
+**Evidence status:** confirmed at app scale — production-app A/B on the A17: stock dead band 310 px vs fork 175 px (Δ=135 px = 1× nav bar), with directional Firebase Test Lab corroboration on Pixel 10 Pro (blazer, AOSP, API 36, gesture navigation: fork content extends 55 px further); the Galaxy S22 (SC-51C, One UI, API 36) run was null on this metric this session (content terminated before the affected zone). The isolated MRE shows zero stock/fork differential on all five tested environments plus two bisect rounds (the adjacency check already returns `{}` in both builds at minimal composition depth; the trigger is composition-scale — a panel/TabView layout pushing the NavigationStack off the nav-bar boundary).
 
 **Files touched:** `Sources/SkipUI/SkipUI/Containers/Navigation.swift`
 
@@ -60,7 +60,7 @@ This file records every change carried in this fork relative to upstream SkipUI 
 
 **Defect (analysis-derived):** Applying `.navigationBarTitleDisplayMode(.inline)` to a `NavigationStack` root that is a non-scrollable view (`VStack`, `ZStack`, `Color`, etc.) can render the default large style instead. The mechanism is a composition-scope issue: `TopAppBarDefaults.pinnedScrollBehavior()` and `exitUntilCollapsedScrollBehavior()` each call `rememberTopAppBarState()` internally. With a single ternary expression selecting between them, only one remember slot is ever allocated; switching branches orphans the slot and creates a fresh (indeterminate) state on the recomposition that delivers the inline preference. The condition requires the preference to arrive after initial composition; when it arrives before the first rendered frame (e.g., `ScrollView` roots, minimal apps), the ternary form behaves correctly.
 
-**Evidence status:** no runtime stock/fork differential captured in any recorded environment (isolated MRE: zero delta on three emulator API levels and the A17; app-level A/B: no surface exercising the `.inline` switching transition). Substantiated by Compose remember-slot semantics, the generated-Kotlin diff, and a JUnit model test; the pre-creation form is strictly safer and behavior-identical where the ternary already worked.
+**Evidence status:** the weakest of the five — no runtime stock/fork differential captured in any recorded environment (isolated MRE: zero delta on three emulator API levels and the A17; app-level A/B: no surface exercising the `.inline` switching transition). Substantiated by Compose remember-slot semantics (a timing-race hypothesis: the preference arriving after first composition), the generated-Kotlin diff, and a JUnit model test; the pre-creation form is strictly safer and behavior-identical where the ternary already worked. Recommend submitting bundled with Fix 3 or last.
 
 **Files touched:** `Sources/SkipUI/SkipUI/Containers/Navigation.swift`
 
@@ -101,7 +101,7 @@ This file records every change carried in this fork relative to upstream SkipUI 
 | `PR_DRAFT_button-ripple-configuration.md` | Draft PR for Fix 5 |
 | `MREs.md` | Minimal reproduction examples for Fixes 1 and 2 |
 | `scripts/rebase-onto-upstream.sh` | Rebase helper — see below |
-| `EVIDENCE.md` (in `~/Documents/skipui-mre/`) | Device measurement log (Samsung Galaxy A17) |
+| `EVIDENCE.md` (in `~/Documents/skipui-mre/evidence/`) | Evidence index: chronological device / emulator / Firebase Test Lab measurement record, with a current-status TL;DR at the top |
 
 ---
 

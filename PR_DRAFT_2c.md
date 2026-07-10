@@ -2,11 +2,11 @@ Thank you for contributing to the Skip project! Please review the contribution g
 
 ## Summary
 
-Fix: saturate `Constraints.Infinity` in `IgnoresSafeAreaLayout` to eliminate a latent integer-overflow crash class on Android.
+Fix: saturate `Constraints.Infinity` in `IgnoresSafeAreaLayout` to eliminate an integer-overflow crash class on Android.
 
-`IgnoresSafeAreaLayout` in `ComposeLayouts.swift` expands the incoming constraints by the safe-area inset using plain integer arithmetic. Compose uses `Constraints.Infinity` (`Int.MAX_VALUE`) as the sentinel for an unbounded dimension; if an unbounded constraint ever reaches this code path while the expansion is positive, the addition wraps to a large negative value, and `constraints.copy()` rejects it with `IllegalArgumentException` — the `androidx.compose.ui.unit.Constraints` API contract requires `maxWidth >= minWidth` / `maxHeight >= minHeight` and throws by precondition on violation.
+`IgnoresSafeAreaLayout` in `ComposeLayouts.swift` expands the incoming constraints by the safe-area inset using plain integer arithmetic. Compose uses `Constraints.Infinity` (`Int.MAX_VALUE`) as the sentinel for an unbounded dimension; if an unbounded constraint reaches this code path while the expansion is positive, the addition wraps to a large negative value, and `constraints.copy()` rejects it with `IllegalArgumentException` — the `androidx.compose.ui.unit.Constraints` API contract requires `maxWidth >= minWidth` / `maxHeight >= minHeight` and throws by precondition on violation.
 
-**Reproduction: achieved on device.** A production SkipFuse app crashed deterministically on first open of a sheet whose background uses `.ignoresSafeArea()` inside a `NavigationStack` — at stock 1.57.0 — and the identical app source survives (and renders correctly) with only this branch's fix applied. Verbatim trace (Samsung Galaxy A17, Android 16):
+**Reproduction: achieved on device (deterministic).** A production SkipFuse app crashes on the FIRST open of a sheet whose content background uses `.ignoresSafeArea()` inside a `NavigationStack` — at stock 1.57.0, and the guarded code is unchanged between 1.57.0 and 1.58.0 — while the identical app source survives (and renders the intended edge-to-edge background) with only this branch's fix applied. Verbatim trace (Samsung Galaxy A17 (SM-A176U1), Android 16 (SDK 36), One UI 8.5, build BP4A.251205.006, 3-button navigation):
 
 ```
 FATAL EXCEPTION: main
@@ -17,7 +17,15 @@ maxHeight must be >= than minHeight, minWidth and minHeight must be >= 0
   at skip.ui.ComposeLayoutsKt$TargetViewLayout$1$1$1.measure-3p2s80s(ComposeLayouts.kt:128)
 ```
 
-The double-nested `IgnoresSafeAreaLayout` receives `Constraints.Infinity` during `TargetViewLayout`'s intrinsic-height pass; the unguarded addition overflows to negative; `Constraints.copy` throws. The affected code is unchanged between 1.57.0 and 1.58.0. Notably, the app had been carrying a contemporaneous code-comment workaround ("…creates double-nesting that crashes…") deliberately omitting `.ignoresSafeArea()` on that surface — i.e., apps in the wild are already working around this defect; this fix makes the workaround unnecessary (verified: the same view renders its intended edge-to-edge background on the fixed branch). The guard itself is surgical and zero-cost on finite constraints: The guard is surgical: if the constraint is already `Constraints.Infinity`, keep it as `Infinity` (unbounded space stays unbounded regardless of expansion); otherwise add the expansion and `coerceAtLeast(0)` defensively. Zero cost on finite constraints, zero iOS/macOS impact — the entire layout path is guarded by `#if SKIP`.
+Notably, the app had been carrying a contemporaneous code-comment workaround for this exact defect — `.ignoresSafeArea()` deliberately omitted on that sheet's background because "double-nesting … crashes" Compose's intrinsic measurement. Apps in the wild are already working around this crash; this fix makes the workaround unnecessary (verified: the same view renders its intended edge-to-edge background on the fixed branch). The guard itself is surgical and zero-cost on finite constraints: if the constraint is already `Constraints.Infinity`, keep it as `Infinity` (unbounded space stays unbounded regardless of expansion); otherwise add the expansion and `coerceAtLeast(0)` defensively. Zero iOS/macOS impact — the entire layout path is guarded by `#if SKIP`.
+
+### The trigger chain (three ingredients, all required)
+
+1. **Sheet presentation** — during presentation, `TargetViewLayout`'s intrinsic-height measurement pass delivers `Constraints.Infinity` as the incoming `maxHeight`.
+2. **The `NavigationStack` scaffold's own `IgnoresSafeAreaLayout`** — a `NavigationStack` inside the sheet already emits one safe-area expansion node.
+3. **A second, nested `IgnoresSafeAreaLayout`** — introduced by `.ignoresSafeArea()` on the content background.
+
+With all three present, the nested node receives `Constraints.Infinity` during the intrinsic pass with a non-zero safe-area expansion; the unguarded addition overflows to negative; `Constraints.copy` throws mid-measure — a hard crash. Remove any one ingredient and the presentation root bounds the constraints before they reach the arithmetic, which is exactly why minimal compositions and worked-around app code open cleanly (see the reproduction record below). The guard removes the class regardless of which composition context routes the unbounded constraint in.
 
 ### The overflow class
 
@@ -33,13 +41,11 @@ Three facts combine into a crash class:
 2. Kotlin `Int` addition wraps on overflow: `2_147_483_647 + 135` (135 px being, e.g., a navigation-bar inset at 450 dpi) `= -2_147_483_514`.
 3. `Constraints` construction/copy validates its bounds by precondition and throws `IllegalArgumentException` ("maxWidth must be >= minWidth") for a negative max — a hard crash in the middle of the measure pass.
 
-Any composition context that routes an unbounded constraint into `IgnoresSafeAreaLayout` with non-zero safe-area expansion crashes at stock. The guard removes the class regardless of which context does so.
+### Reproduction record — honest account
 
-### Reproduction status — honest account
+**Captured (deterministic device crash):** the production app that motivated this fix carried a code-comment workaround, deliberately omitting `.ignoresSafeArea()` on a sheet's background gradient with a comment explaining that the resulting double-nesting crashes. Reverting that single modifier — restoring `.ignoresSafeArea()` on the background, i.e., restoring trigger ingredient 3 — under stock skip-ui 1.57.0 crashes on the first open of the sheet with the exact trace above. The identical source built against this branch opens the same sheet cleanly across five open/close cycles plus a rotation pass, and renders the intended edge-to-edge background that the workaround had sacrificed.
 
-We attempted to capture this crash and could not. The snippet below (a sheet whose content uses `.ignoresSafeArea()` inside a `NavigationStack`) opens without crashing at stock on every environment we tested: API-34, API-36, and API-37 emulators; a physical Samsung Galaxy A17 (SM-A176U1, Android 16, One UI 8.5); Firebase Test Lab devices from two vendors (Samsung Galaxy S22, Pixel 10 Pro); and a production-scale app A/B at skip-ui 1.58.0 — zero `IllegalArgumentException`, `FATAL EXCEPTION`, or `SIGSEGV` entries in any captured logcat.
-
-Code analysis explains why: at the current Compose BOM, the modal presentation path bounds the constraints before they reach this arithmetic — `PresentationRoot` applies safe-area padding for regular sheets, and a `.background(...ignoresSafeArea())` node is measured by `TargetViewLayout` at the finite size of its foreground content. So `Constraints.Infinity` does not reach the unguarded addition on the paths we exercised. The guard exists precisely for any BOM upgrade or composition context that changes this: the failure mode is a hard layout crash, and the protection is two saturating comparisons.
+**Earlier negatives, explained:** before the workaround was identified as the missing trigger, we attempted to capture this crash and could not — the minimal snippet below opens without crashing at stock on API-34, API-36, and API-37 emulators, on the physical Samsung Galaxy A17, on Firebase Test Lab devices from two vendors (Samsung Galaxy S22 and Pixel 10 Pro), and the production-scale app A/B at stock 1.58.0 (with the workaround in place) also opened every sheet cleanly with zero `IllegalArgumentException`, `FATAL EXCEPTION`, or `SIGSEGV` entries in any captured logcat. All of those negatives are real, and all are consistent with the capture: in the production app the trigger was worked around at the app level (ingredient 3 absent), and in the minimal composition the presentation root bounds the constraints before they reach the arithmetic — `PresentationRoot` applies safe-area padding for regular sheets, and a `.background(...ignoresSafeArea())` node in a shallow tree is measured by `TargetViewLayout` at the finite size of its foreground content, so `Constraints.Infinity` never reaches the unguarded addition. The minimal snippet below therefore still does not crash at stock; it is a regression surface for the guarded path, not a reproduction. The deterministic reproduction requires the full three-ingredient composition described above.
 
 Regression surface (exercises the guarded path; does not crash at stock in the environments listed above):
 
@@ -89,7 +95,7 @@ let updatedConstraints = constraints.copy(maxWidth: safeMaxW, maxHeight: safeMax
 
 ### Impact
 
-- **Android**: eliminates the `Constraints.Infinity + expansion` overflow class for any view calling `.ignoresSafeArea()`. Finite constraints behave identically to stock.
+- **Android**: eliminates the `Constraints.Infinity + expansion` overflow crash for any view calling `.ignoresSafeArea()` under the trigger chain above. Finite constraints behave identically to stock.
 - **iOS / macOS**: no effect. The entire `IgnoresSafeAreaLayout` is inside `#if SKIP`.
 - **Behavior with zero safe-area expansion**: unchanged — the guard does not modify the value.
 - **Cost**: two integer comparisons per measure pass; no allocation, no behavioral change on any finite path.
@@ -109,9 +115,9 @@ Skip Pull Request Checklist:
 
 - [x] AI was used to generate or assist with generating this PR. *Please specify below how you used AI to help you, and what steps you have taken to manually verify the changes*.
 
-**AI use & verification:** The diagnosis, fix, tests, and this PR text were developed with substantial AI assistance (Claude). Verification performed: the full SkipUI test suite was run on both the Swift-native and skipstone-transpiled Kotlin sides with zero new failures vs the base tag (104 tests, 0 failures, 2 pre-existing upstream skips); the generated Kotlin was inspected to confirm the guard transpiled as intended; and the sheet + `.ignoresSafeArea()` surface was exercised with this branch installed on emulators (API 34/36/37) and a physical Samsung Galaxy A17 (Android 16, build BP4A.251205.006) with no crashes and no layout regressions. To state it plainly: we have not observed this crash at runtime; the change is justified by the arithmetic proof and the `Constraints` API contract, not by a captured trace.
+**AI use & verification:** The diagnosis, fix, tests, and this PR text were developed with substantial AI assistance (Claude). Verification performed: the crash was reproduced at runtime on a physical device (Samsung Galaxy A17 (SM-A176U1), Android 16 (SDK 36), One UI 8.5, build BP4A.251205.006, 3-button navigation) — stock crashes deterministically on first sheet open once the app-level workaround is reverted, and the fixed branch survives the identical source (see the reproduction record above). The full SkipUI test suite was run on both the Swift-native and skipstone-transpiled Kotlin sides with zero new failures vs the base tag (104 tests, 0 failures, 2 known upstream Robolectric skips); the generated Kotlin was inspected to confirm the guard transpiled as intended; and the sheet + `.ignoresSafeArea()` surface was exercised with this branch installed on emulators (API 34/36/37) and the physical Samsung Galaxy A17 with no crashes and no layout regressions.
 
-**App-level A/B evidence (production SkipFuse app, Samsung Galaxy A17, One UI 8.5):** A full A/B run was conducted using two builds of a production SkipFuse app differing only in the skip-ui pin: stock 1.58.0 (upstream, this guard absent) vs 1.58.0+fixes.1 (this branch). A sheet with the exact structure described here — a `NavigationStack` inside `.sheet()` with `.background(gradient.ignoresSafeArea())` — was opened in both arms. **Neither arm crashed** (no `IllegalArgumentException`, `FATAL EXCEPTION`, or `SIGSEGV` in either logcat buffer, 15,890 and 13,670 lines respectively), and layout was indistinguishable between arms — i.e., the guard is behaviorally inert on the finite-constraint path, as designed. A Firebase Test Lab run of the same two builds on Samsung Galaxy S22 (One UI) and Pixel 10 Pro (AOSP) also completed the sheet surface with 0 crashes in all four runs.
+**App-level A/B evidence (production SkipFuse app, Samsung Galaxy A17, One UI 8.5):** Two A/B passes were run on the same device. (1) *Workaround in place* — two builds of a production SkipFuse app differing only in the skip-ui pin (stock 1.58.0 vs `1.58.0+fixes.1`, this branch) opened a sheet with a `NavigationStack` and a non-`ignoresSafeArea` background: neither arm crashed (no `IllegalArgumentException`, `FATAL EXCEPTION`, or `SIGSEGV` in either logcat buffer, 15,890 and 13,670 lines respectively) and layout was indistinguishable between arms — expected, because the app-level workaround removes trigger ingredient 3, and it confirms the guard is behaviorally inert on the finite-constraint path, as designed. A Firebase Test Lab run of the same two builds on Samsung Galaxy S22 (SC-51C, One UI, API 36) and Pixel 10 Pro (blazer, AOSP, API 36, gesture navigation) also completed the sheet surface with 0 crashes in all four runs — same explanation. (2) *Workaround reverted (the decisive A/B)* — restoring `.ignoresSafeArea()` on the sheet background: stock skip-ui 1.57.0 crashes on the first sheet open with the verbatim trace quoted in the Summary; the identical source pinned to this branch survives five open/close cycles plus rotation and renders the intended edge-to-edge background.
 
 ## Test Coverage
 
@@ -123,7 +129,7 @@ Skip Pull Request Checklist:
 
 3. **`testIgnoresSafeAreaInsideZStackDoesNotCrash`** — smoke test: `.ignoresSafeArea()` nested inside a `ZStack` renders without crash.
 
-**Caveat**: Robolectric returns 0 for all `WindowInsets.safeDrawing` values, so the overflow path cannot be triggered via rendering in the automated suite — and, as stated above, no runtime reproduction of the crash exists in our evidence record. The arithmetic-proof test demonstrates the defect class and the guard directly in Kotlin; the guard eliminates the class by construction.
+**Caveat**: Robolectric returns 0 for all `WindowInsets.safeDrawing` values, so the overflow path cannot be triggered via rendering in the automated suite. The behavioral evidence is the deterministic device reproduction documented above; the arithmetic-proof test demonstrates the defect class and the guard directly in Kotlin, and the guard eliminates the class by construction.
 
 ## Details
 

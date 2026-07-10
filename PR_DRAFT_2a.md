@@ -4,7 +4,7 @@ Thank you for contributing to the Skip project! Please review the contribution g
 
 Fix: suppress safe-area inset fallback in `NavigationStack` when toolbar is explicitly hidden.
 
-When `.toolbarVisibility(.hidden, for: .navigationBar)` is applied inside a `NavigationStack`, the Compose layout falls back to `WindowInsets.safeDrawing.calculateTopPadding()` as content padding even though the bar height is already zeroed. If the parent layout already compensates for the system inset, the gap is double-counted, appearing as a blank band below the status bar. Device measurement on Samsung Galaxy A17 (SM-A176U1) (Android 16) confirmed a 100 px delta between stock and this branch — exactly one status-bar height (35.6 dp), i.e., the inset applied twice at stock and once with the fix.
+When `.toolbarVisibility(.hidden, for: .navigationBar)` is applied inside a `NavigationStack`, the Compose layout falls back to `WindowInsets.safeDrawing.calculateTopPadding()` as content padding even though the bar height is already zeroed. If the parent layout already compensates for the system inset, the gap is double-counted, appearing as a blank band below the status bar. Device measurement on a Samsung Galaxy A17 (SM-A176U1), Android 16 confirmed a 100 px delta between stock and this branch — exactly one status-bar height (35.6 dp), i.e., the inset applied twice at stock and once with the fix.
 
 The fix adds a surgical guard in four places (v1 Column layout top/bottom, v2 Box layout top/bottom): if `visibility == .hidden`, use 0 dp instead of the safe-area fallback. Automatic-hide (title-less roots where `showTopBar == false` but `visibility != .hidden`) is unaffected. Zero iOS/macOS impact—the entire layout path is guarded by `#if SKIP`.
 
@@ -44,7 +44,7 @@ struct ReproduceNavigationInsetDouble: View {
 
 The host pays the system top inset once (the `GeometryReader` + `.padding(.top, topInset)` pattern used by apps that draw their own chrome). At stock, the hidden-toolbar `NavigationStack` pays it a second time.
 
-**At stock**: a blank band of one status-bar height (100 px = 35.6 dp on the test device) appears between the status bar and the red canvas. Measured via uiautomator on Samsung Galaxy A17 (SM-A176U1), Android 16 (status bar 100 px, density 2.8125 px/dp): content-area top at **y=200** — 100 px below the status-bar bottom (y=100).
+**At stock**: a blank band of one status-bar height (100 px = 35.6 dp on the test device) appears between the status bar and the red canvas. Measured via uiautomator on a Samsung Galaxy A17 (SM-A176U1), Android 16 (SDK 36), One UI 8.5, build BP4A.251205.006, 3-button navigation (status bar 100 px, density 2.8125 px/dp): content-area top at **y=200** — 100 px below the status-bar bottom (y=100).
 
 **At this branch**: the red canvas extends flush below the status bar; content-area top at **y=100**. Delta: **100 px = 1× status-bar height (35.6 dp)** — confirms one inset was being applied twice.
 
@@ -61,7 +61,7 @@ let topPadding = arguments.ignoresSafeAreaEdges.contains(.top)
 
 When toolbar is explicitly hidden:
 - `topBarHeightDp == 0.dp` (zeroed by `LaunchedEffect` on `showTopBar` change)
-- `safeTopDp > 0.dp` on physical device (e.g., 35.6 dp on Samsung Galaxy A17 (SM-A176U1))
+- `safeTopDp > 0.dp` on physical device (e.g., 35.6 dp on the Samsung Galaxy A17)
 - Result: `topPadding = max(0.dp, safeTopDp) = safeTopDp` applied again on top of parent's system-inset padding
 
 The same defect exists in v1 Column layout and bottom-bar paths of both layouts.
@@ -127,7 +127,7 @@ Skip Pull Request Checklist:
 
 - [x] AI was used to generate or assist with generating this PR. *Please specify below how you used AI to help you, and what steps you have taken to manually verify the changes*.
 
-**AI use & verification:** The diagnosis, fix, tests, and this PR text were developed with substantial AI assistance (Claude). Manual/behavioral verification: the defect was reproduced on a physical Samsung Galaxy A17 (SM-A176U1, Android 16, build BP4A.251205.006) before the fix and re-tested after (see reproduction section); the full SkipUI test suite was run on both the Swift-native and skipstone-transpiled Kotlin sides with zero new failures vs the base tag; the generated Kotlin was inspected to confirm the change transpiled as intended.
+**AI use & verification:** The diagnosis, fix, tests, and this PR text were developed with substantial AI assistance (Claude). Manual/behavioral verification: the defect was reproduced on a physical Samsung Galaxy A17 (SM-A176U1), Android 16 (SDK 36), One UI 8.5, build BP4A.251205.006, 3-button navigation before the fix and re-tested after (see reproduction section); the full SkipUI test suite was run on both the Swift-native and skipstone-transpiled Kotlin sides with zero new failures vs the base tag (104 tests, 0 failures, 2 known upstream Robolectric skips); the generated Kotlin was inspected to confirm the change transpiled as intended.
 
 **App-level A/B evidence (production SkipFuse app, Samsung Galaxy A17, One UI 8.5):** A full A/B run was conducted using two builds of a production SkipFuse app differing only in the skip-ui pin: stock 1.58.0 (upstream, this fix absent) vs 1.58.0+fixes.1 (this branch). The app uses a hidden-toolbar `NavigationStack` for its Settings tab root (no navigation bar title visible; `toolbarVisibility(.hidden, for: .navigationBar)` applied). Measured via uiautomator: **stock first content element at y=345 (245 px below status-bar bottom); fork first content element at y=245 (145 px below status-bar bottom). Delta: 100 px = 1× status-bar height (35.6 dp)**, confirming the double-inset is eliminated. Screenshots: `evidence/app-ab/stock-settings-tab.png` vs `evidence/app-ab/fork-settings-tab.png`. A second hidden-toolbar surface (Game tab panel, content at y=200 in both arms) showed no differential — that surface's layout architecture does not double-pay the top inset at this app version (y=200 = 100 px below status bar = correct single-inset placement). This A/B is on the same device that showed the MRE 2a measurement (100 px shift at the MRE level); the production-app measurement independently confirms the fix on a real hidden-toolbar `NavigationStack` in a full app context.
 
@@ -143,7 +143,7 @@ Skip Pull Request Checklist:
 
 4. **`testNavigationStackWithVisibleToolbarRendersWithoutCrash`** — regression guard: visible toolbar still renders (fix must not break the happy path).
 
-**Caveat**: Robolectric sets `WindowInsets.safeDrawing` to 0, so the double-inset is not observable via rendering in the automated suite. The guard-logic test proves correctness with a synthetic value; the definitive behavioral evidence is the device measurement (100 px delta = 1× status-bar height) on Samsung Galaxy A17 (SM-A176U1) (Android 16), corroborated at app scale on the same device (100 px, see the A/B section above) and cross-vendor by a Firebase Test Lab run of the same two app builds (Samsung Galaxy S22 Δ=44 px, Pixel 10 Pro Δ=40 px on the same surface — smaller quantum consistent with those devices' smaller insets, same direction).
+**Caveat**: Robolectric sets `WindowInsets.safeDrawing` to 0, so the double-inset is not observable via rendering in the automated suite. The guard-logic test proves correctness with a synthetic value; the definitive behavioral evidence is the device measurement (100 px delta = 1× status-bar height) on the Samsung Galaxy A17 (SM-A176U1), Android 16, corroborated at app scale on the same device (100 px, see the A/B section above) and cross-vendor by a Firebase Test Lab run of the same two app builds (Samsung Galaxy S22 (SC-51C, One UI, API 36) Δ=44 px, Pixel 10 Pro (blazer, AOSP, API 36, gesture navigation) Δ=40 px on the same surface — smaller quantum consistent with those devices' smaller transparent/gesture insets, same direction).
 
 ## Details
 
