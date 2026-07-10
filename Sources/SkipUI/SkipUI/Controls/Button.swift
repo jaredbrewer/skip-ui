@@ -4,7 +4,6 @@
 import Foundation
 #if SKIP
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -21,7 +20,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.RippleConfiguration
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 #elseif canImport(CoreGraphics)
@@ -227,21 +225,7 @@ public struct Button : View, Renderable {
 
         var modifier = context.modifier
         if let action, isHitTestingEnabled {
-            // .clickable() without an explicit indication parameter resolves
-            // LocalIndication.current, which in Material3 is the M1 ripple
-            // (androidx.compose.material.ripple). The M1 ripple does NOT read
-            // LocalRippleConfiguration (M3); it reads the separate LocalRippleTheme.
-            // Setting LocalRippleConfiguration = null (to suppress ripple on a container)
-            // therefore has no effect on buttons rendered via this M1 path.
-            // Read LocalRippleConfiguration.current and pass indication = null explicitly
-            // when the M3 config is suppressed, so container-level ripple suppression
-            // propagates to borderless/plain/automatic buttons. When the config is
-            // non-null (default), LocalIndication.current is used, preserving existing
-            // M3 ripple behaviour.
-            // SKIP INSERT: val rippleConfig = LocalRippleConfiguration.current
-            // SKIP INSERT: val rippleIndication: androidx.compose.foundation.Indication? = if (rippleConfig != null) LocalIndication.current else null
-            // SKIP INSERT: val interactionSrc = remember { MutableInteractionSource() }
-            modifier = modifier.clickable(interactionSource: interactionSrc, indication: rippleIndication, enabled: isEnabled, onClick: action)
+            modifier = modifier.clickable(onClick: action, enabled: isEnabled)
         }
         let contentContext = context.content(modifier: modifier)
 

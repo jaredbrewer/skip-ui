@@ -304,19 +304,7 @@ public struct NavigationStack : View, Renderable {
         let scrollToTop = rememberSaveable(stateSaver: context.stateSaver as! Saver<Preference<ScrollToTopAction>, Any>) { mutableStateOf(Preference<ScrollToTopAction>(key: ScrollToTopPreferenceKey.self)) }
         let scrollToTopCollector = PreferenceCollector<ScrollToTopAction>(key: ScrollToTopPreferenceKey.self, state: scrollToTop)
 
-        // Pre-create BOTH behaviors at composition scope so each maintains its own
-        // TopAppBarState (via rememberTopAppBarState() inside each call) independently
-        // of which one is currently selected. Without this, a single ternary expression
-        // called exactly one @Composable function per frame; switching from
-        // exitUntilCollapsed → pinned (when the inline preference propagates for a
-        // VStack root) discarded the old branch's remember slot and created a fresh
-        // state at the new branch, which could leave the bar stuck as MediumTopAppBar on
-        // non-scrollable roots because no scroll events drive re-settlement. With both
-        // behaviors created unconditionally, neither slot is ever orphaned, and the
-        // transition to TopAppBar (inline) is immediate regardless of scroll content.
-        let pinnedBehavior = TopAppBarDefaults.pinnedScrollBehavior()
-        let exitBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-        let initialScrollBehavior = isInlineTitleDisplayMode ? pinnedBehavior : exitBehavior
+        let initialScrollBehavior = isInlineTitleDisplayMode ? TopAppBarDefaults.pinnedScrollBehavior() : TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
         // Determine the final scrollBehavior early by checking if the environment value would modify it
         // We need to do this before we create the nestedScroll modifier so we attach the correct nestedScrollConnection
         let scrollBehavior: TopAppBarScrollBehavior
