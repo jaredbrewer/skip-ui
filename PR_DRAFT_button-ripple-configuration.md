@@ -102,6 +102,8 @@ Skip Pull Request Checklist:
 
 **In-app behavioral observation**: the defect was observed in a transpiled SkipUI app (full Fianchetto build, skipstone path) on Samsung Galaxy A17 (SM-A176U1, Android 16, build BP4A.251205.006), where a button inside a container with `LocalRippleConfiguration` set to `null` continued to show the default M3 ripple on stock. Reproducing this via the minimal MRE structure requires a transpiled (non-SkipFuse-native) app built with `skip app create`; see the Minimal Reproduction section above.
 
+**App-level A/B evidence (production SkipFuse app, Samsung Galaxy A17, One UI 8.5):** A full A/B run was conducted using two builds of a production SkipFuse app (the same app as the other four fixes in this PR batch) differing only in the skip-ui pin. The tab-bar buttons were pressed at `animator_duration_scale=10` in both arms. **Both arms showed no visible M3 ripple — delta: 0.** This is expected and not a failure: the production app is a SkipFuse-native build (Swift compiled to `libSkipUI.so`), and this fix exclusively targets the transpiled (skipstone) Kotlin path. `LocalRippleConfiguration` does not cross the JNI boundary; the tab-bar buttons are rendered natively. Screenshots `evidence/app-ab/stock-w23-ripple.png` and `evidence/app-ab/fork-w23-ripple.png` confirm identical behaviour in both arms. The fix is NOT APPLICABLE to SkipFuse-native apps at the app level; its scope (transpiled apps using `#if SKIP` with `LocalRippleConfiguration`) is as described in this PR.
+
 ## Test Coverage
 
 `Tests/SkipUITests/SkipUITests.swift` adds three tests:
