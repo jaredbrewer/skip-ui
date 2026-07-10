@@ -6,7 +6,18 @@ Fix: saturate `Constraints.Infinity` in `IgnoresSafeAreaLayout` to eliminate a l
 
 `IgnoresSafeAreaLayout` in `ComposeLayouts.swift` expands the incoming constraints by the safe-area inset using plain integer arithmetic. Compose uses `Constraints.Infinity` (`Int.MAX_VALUE`) as the sentinel for an unbounded dimension; if an unbounded constraint ever reaches this code path while the expansion is positive, the addition wraps to a large negative value, and `constraints.copy()` rejects it with `IllegalArgumentException` — the `androidx.compose.ui.unit.Constraints` API contract requires `maxWidth >= minWidth` / `maxHeight >= minHeight` and throws by precondition on violation.
 
-This PR is defensive hardening, stated plainly: **we have not captured this crash in isolation** (reproduction status below), but the overflow is proven by arithmetic, and the guard eliminates the overflow class by construction. The guard is surgical: if the constraint is already `Constraints.Infinity`, keep it as `Infinity` (unbounded space stays unbounded regardless of expansion); otherwise add the expansion and `coerceAtLeast(0)` defensively. Zero cost on finite constraints, zero iOS/macOS impact — the entire layout path is guarded by `#if SKIP`.
+**Reproduction: achieved on device.** A production SkipFuse app crashed deterministically on first open of a sheet whose background uses `.ignoresSafeArea()` inside a `NavigationStack` — at stock 1.57.0 — and the identical app source survives (and renders correctly) with only this branch's fix applied. Verbatim trace (Samsung Galaxy A17, Android 16):
+
+```
+FATAL EXCEPTION: main
+java.lang.IllegalArgumentException: maxWidth must be >= than minWidth,
+maxHeight must be >= than minHeight, minWidth and minHeight must be >= 0
+  at skip.ui.ComposeLayoutsKt$IgnoresSafeAreaLayout$6$2.measure-3p2s80s(ComposeLayouts.kt:239)
+  at skip.ui.ComposeLayoutsKt$IgnoresSafeAreaLayout$6$2.maxIntrinsicHeight(ComposeLayouts.kt:235)
+  at skip.ui.ComposeLayoutsKt$TargetViewLayout$1$1$1.measure-3p2s80s(ComposeLayouts.kt:128)
+```
+
+The double-nested `IgnoresSafeAreaLayout` receives `Constraints.Infinity` during `TargetViewLayout`'s intrinsic-height pass; the unguarded addition overflows to negative; `Constraints.copy` throws. The affected code is unchanged between 1.57.0 and 1.58.0. Notably, the app had been carrying a contemporaneous code-comment workaround ("…creates double-nesting that crashes…") deliberately omitting `.ignoresSafeArea()` on that surface — i.e., apps in the wild are already working around this defect; this fix makes the workaround unnecessary (verified: the same view renders its intended edge-to-edge background on the fixed branch). The guard itself is surgical and zero-cost on finite constraints: The guard is surgical: if the constraint is already `Constraints.Infinity`, keep it as `Infinity` (unbounded space stays unbounded regardless of expansion); otherwise add the expansion and `coerceAtLeast(0)` defensively. Zero cost on finite constraints, zero iOS/macOS impact — the entire layout path is guarded by `#if SKIP`.
 
 ### The overflow class
 
