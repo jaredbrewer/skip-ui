@@ -81,6 +81,14 @@ struct ExerciseConstraintsGuard: View {
 #Preview { ExerciseConstraintsGuard() }
 ```
 
+### Affirmative evidence (attach when opening the PR)
+
+The stock crash has no screenshot — the process dies mid-measure during the intrinsic pass, so the `FATAL EXCEPTION` / `IllegalArgumentException` trace quoted in the Summary is the primary artifact. The secondary, affirmative visual is that the identical sheet presentation survives and renders correctly on this branch (drag-drop into the PR form; GitHub hosts it on upload):
+
+| Image (repo-relative) | Fix · arm · device | What it shows |
+| --- | --- | --- |
+| `evidence/redacted/2c-fork-sheet.png` | 2c · fork · Samsung Galaxy A17 (production A/B) | The Board Setup modal sheet — presented over a `NavigationStack` whose background uses `.ignoresSafeArea()` (trigger ingredient 3 restored) — renders edge-to-edge with full content (FEN field, piece picker, chessboard). Stock skip-ui crashes on this same presentation. A faint app-specific description string above the sheet was redacted. |
+
 ### The Fix
 
 `ComposeLayouts.swift` — `IgnoresSafeAreaLayout` measurement block:

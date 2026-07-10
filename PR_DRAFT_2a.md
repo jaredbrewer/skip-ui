@@ -48,6 +48,17 @@ The host pays the system top inset once (the `GeometryReader` + `.padding(.top, 
 
 **At this branch**: the red canvas extends flush below the status bar; content-area top at **y=100**. Delta: **100 px = 1× status-bar height (35.6 dp)** — confirms one inset was being applied twice.
 
+### Affirmative evidence (attach when opening the PR)
+
+Redacted A/B screenshots for this fix (drag-drop into the PR form; GitHub hosts them on upload). App name, developer handle, and copyright were redacted; only generic UI (board-theme / piece-set list, tab bar) remains.
+
+| Image (repo-relative) | Fix · arm · device | What it shows |
+| --- | --- | --- |
+| `evidence/redacted/app-ab/stock-settings-tab.png` | 2a · stock · Samsung Galaxy A17 (production A/B) | Hidden-toolbar Settings root: ~100 px blank dead band at the top; the first list section ("Board theme") sits well below the status bar. |
+| `evidence/redacted/app-ab/fork-settings-tab.png` | 2a · fork · Samsung Galaxy A17 (production A/B) | Same screen on this branch: top inset removed, content shifted up **~100 px (1× status-bar height, 35.6 dp)**; an extra "Board" section is now visible in the same viewport. |
+| `evidence/redacted/ftl/stock-sc51c-tab-settings.png` | 2a · stock · Galaxy S22 (SC-51C, Firebase Test Lab) | Cross-device confirmation: top dead band present before the first list section (Δ **44 px** on this device — smaller quantum, same direction). |
+| `evidence/redacted/ftl/fork-sc51c-tab-settings.png` | 2a · fork · Galaxy S22 (SC-51C, Firebase Test Lab) | Top inset corrected; list content begins at the nav-bar bottom. |
+
 ### Root Cause
 
 `Navigation.swift`, v2 Box layout, applies safe-area inset padding regardless of explicit toolbar visibility:
