@@ -1,3 +1,14 @@
+> **WITHDRAWN (2026-07-10) — not submitted; fork change reverted.**
+>
+> An adversarial review found this fix both redundant and potentially harmful, and its central premise factually wrong for the resolved Material3 (≥ 1.3.0, and specifically 1.4.0 on this fork):
+>
+> - On Material3 ≥ 1.3.0, `MaterialTheme` (`ColorScheme.swift`) installs the **M3** ripple as `LocalIndication`, and that indication already reads `LocalRippleConfiguration` — it removes the ripple when the configuration is `null` and applies the configured color/alpha otherwise. Stock `.clickable(onClick:enabled:)` therefore ALREADY honors `.material3Ripple { _ in nil }` and container-level `LocalRippleConfiguration` suppression. The premise below ("`LocalIndication.current` … in Material 3 is the M1 ripple … reads the separate `LocalRippleTheme`") is wrong for material3 ≥ 1.3.0.
+> - Passing `indication = null` explicitly would additionally discard any non-ripple custom indication a caller had installed via `LocalIndication`, a behavioral regression.
+>
+> The fork production change (`Button.swift`) has been reverted to the stock `modifier = modifier.clickable(onClick: action, enabled: isEnabled)`, the regression test deleted, and the `fix/button-ripple-configuration` branch removed. The text below is retained only for historical context.
+
+---
+
 Thank you for contributing to the Skip project! Please review the contribution guide at https://skip.dev/docs/contributing/ for advice and guidance on making high-quality PRs.
 
 ## Summary

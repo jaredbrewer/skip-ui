@@ -1,3 +1,15 @@
+> **WITHDRAWN (2026-07-10) — not submitted; fork change reverted.**
+>
+> An adversarial review found the rationale code-refuted and the change a net latent risk with no observed benefit:
+>
+> - The app-bar TYPE (large vs inline `TopAppBar`) is selected from `isInlineTitleDisplayMode` **independently** of the pre-created scroll behaviors (see the app-bar branch in `Navigation.swift` ~499). Pre-creating both `pinnedScrollBehavior()` and `exitUntilCollapsedScrollBehavior()` therefore does NOT enable or accelerate the first inline transition — that transition is already immediate.
+> - Its only real effect is keeping BOTH `TopAppBarState` slots alive simultaneously, which introduces a latent risk of stale collapsed/overlap offsets when the display mode flips while the bar is scrolled.
+> - No runtime stock/fork differential was ever captured in any recorded environment (this was the weakest of the five fixes: MRE zero-delta on all environments, no app-level signal).
+>
+> The fork production change (`Navigation.swift`) has been reverted to the stock single-ternary `let initialScrollBehavior = isInlineTitleDisplayMode ? TopAppBarDefaults.pinnedScrollBehavior() : TopAppBarDefaults.exitUntilCollapsedScrollBehavior()`, the regression test deleted, and the `fix/inline-title-nonscrollable-root` branch removed. The text below is retained only for historical context.
+
+---
+
 Thank you for contributing to the Skip project! Please review the contribution guide at https://skip.dev/docs/contributing/ for advice and guidance on making high-quality PRs.
 
 ## Summary
