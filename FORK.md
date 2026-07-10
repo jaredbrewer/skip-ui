@@ -12,7 +12,9 @@ This file records every change carried in this fork relative to upstream SkipUI 
 
 ## Fix 1 — IgnoresSafeAreaLayout `Constraints.Infinity` overflow crash
 
-**Defect:** `IgnoresSafeAreaLayout` in `ComposeLayouts.swift` performs plain integer arithmetic to expand constraints by the safe-area inset. During sheet intrinsic-height measurement, Compose passes `Constraints.Infinity` (`Int.MAX_VALUE = 2_147_483_647`) as `maxWidth`/`maxHeight`. Adding any positive expansion (e.g., the navigation-bar inset) causes two's-complement wrap to a large negative value; `Constraints.copy()` with a negative `maxWidth` throws `IllegalArgumentException: maxWidth must be >= minWidth`. The crash is 100% reproducible on real hardware when opening any sheet containing `.ignoresSafeArea()` inside a `NavigationStack`. The crash does not reproduce on the AVD (SwiftShader constraint arithmetic differs) or in the minimal MRE on Android 16 (Compose BOM / intrinsic-measurement delta; see `EVIDENCE.md`).
+**Defect (latent class):** `IgnoresSafeAreaLayout` in `ComposeLayouts.swift` performs plain integer arithmetic to expand constraints by the safe-area inset. If an unbounded constraint (`Constraints.Infinity` = `Int.MAX_VALUE = 2_147_483_647`) reaches this path with a positive expansion (e.g., the navigation-bar inset), the addition wraps to a large negative value; `Constraints.copy()` with a negative `maxWidth` throws `IllegalArgumentException: maxWidth must be >= minWidth`.
+
+**Evidence status:** the crash has never been captured in any recorded environment — sheets with `.ignoresSafeArea()` content opened without crashing at stock on the AVD, on API-34/36/37 emulators, on the physical Samsung Galaxy A17 (Android 16), on Firebase Test Lab (Galaxy S22, Pixel 10 Pro), and in the production-app A/B at 1.58.0 (see `EVIDENCE.md`). At the tested Compose BOM the modal measurement path bounds the inner node before the arithmetic (`PresentationRoot` padding, `TargetViewLayout` finite bounds). The fix is defensive hardening: the overflow class is eliminated by construction, at zero cost on finite constraints.
 
 **Files touched:** `Sources/SkipUI/SkipUI/Containers/ComposeLayouts.swift`
 
@@ -42,6 +44,8 @@ This file records every change carried in this fork relative to upstream SkipUI 
 
 **Defect:** When a `NavigationStack` is embedded inside a panel layout (e.g., a `VStack` with a custom tab bar below the navigation content), pushed destinations display a dead band at the bottom equal to one navigation-bar height. The `IgnoresSafeAreaLayout` adjacency check correctly returns `{}` for the bottom edge (the stack is not adjacent to the system nav-bar boundary), but the initial candidate edge set `ignoresSafeAreaEdges = [.bottom]` was passed into `NavigationEntryArguments` instead of the closure's actual-expanded-edges result. `RenderEntry`'s bottom-padding guard then applied navigation-bar inset padding regardless. Samsung Galaxy A17 navigation bar measures 135 px (48 dp at 2.8125 px/dp); this is the expected dead-band size for affected layouts.
 
+**Evidence status:** confirmed at app scale — production-app A/B on the A17: stock dead band 310 px vs fork 175 px (Δ=135 px = 1× nav bar), with directional Firebase Test Lab corroboration on Pixel 10 Pro (Δ=55 px, gesture-nav quantum). The isolated MRE shows zero stock/fork differential on all five tested environments (the adjacency check already returns `{}` in both builds at minimal composition depth).
+
 **Files touched:** `Sources/SkipUI/SkipUI/Containers/Navigation.swift`
 
 **Fix branch:** `fix/pushed-destination-bottom-inset`
@@ -54,7 +58,9 @@ This file records every change carried in this fork relative to upstream SkipUI 
 
 ## Fix 4 — `.navigationBarTitleDisplayMode(.inline)` ignored on non-scrollable roots
 
-**Defect:** Applying `.navigationBarTitleDisplayMode(.inline)` to a `NavigationStack` root that is a non-scrollable view (`VStack`, `ZStack`, `Color`, etc.) has no effect — the title renders in the default large style. The fix is a composition-scope issue: `TopAppBarDefaults.pinnedScrollBehavior()` and `exitUntilCollapsedScrollBehavior()` each call `rememberTopAppBarState()` internally. With a single ternary expression selecting between them, only one remember slot is ever allocated; switching branches orphans the slot and creates a fresh (indeterminate) state on the recomposition that delivers the inline preference. The defect does not occur when the root is a `ScrollView` because the preference arrives before the first rendered frame.
+**Defect (analysis-derived):** Applying `.navigationBarTitleDisplayMode(.inline)` to a `NavigationStack` root that is a non-scrollable view (`VStack`, `ZStack`, `Color`, etc.) can render the default large style instead. The mechanism is a composition-scope issue: `TopAppBarDefaults.pinnedScrollBehavior()` and `exitUntilCollapsedScrollBehavior()` each call `rememberTopAppBarState()` internally. With a single ternary expression selecting between them, only one remember slot is ever allocated; switching branches orphans the slot and creates a fresh (indeterminate) state on the recomposition that delivers the inline preference. The condition requires the preference to arrive after initial composition; when it arrives before the first rendered frame (e.g., `ScrollView` roots, minimal apps), the ternary form behaves correctly.
+
+**Evidence status:** no runtime stock/fork differential captured in any recorded environment (isolated MRE: zero delta on three emulator API levels and the A17; app-level A/B: no surface exercising the `.inline` switching transition). Substantiated by Compose remember-slot semantics, the generated-Kotlin diff, and a JUnit model test; the pre-creation form is strictly safer and behavior-identical where the ternary already worked.
 
 **Files touched:** `Sources/SkipUI/SkipUI/Containers/Navigation.swift`
 
@@ -69,6 +75,8 @@ This file records every change carried in this fork relative to upstream SkipUI 
 ## Fix 5 — `LocalRippleConfiguration` not propagating to `Button` clickable indication
 
 **Defect:** Setting `LocalRippleConfiguration = null` (or a custom configuration) on a container view does not suppress or customise the ripple on child `Button` taps. `.clickable()` without an explicit `indication` parameter resolves `LocalIndication.current`, which in Material 3 is the M1 ripple (`androidx.compose.material.ripple`). The M1 ripple reads `LocalRippleTheme`, not `LocalRippleConfiguration` (M3). Scope: transpiled-path only. The native SwiftFuse path does not use this `.clickable()` call and `LocalRippleConfiguration` does not cross the JNI bridge.
+
+**Evidence status:** code inspection + JUnit model test only; no runtime observation of the defect or the fix exists in the evidence record (all recorded environments were SkipFuse-native builds, which structurally cannot exhibit it — stock and fork provably identical on this path by APK diff). Behavioral confirmation requires a skipstone-transpiled app.
 
 **Files touched:** `Sources/SkipUI/SkipUI/Controls/Button.swift`
 

@@ -1,7 +1,7 @@
-# SkipUI Fork Verification Plan — patches/1.57.0
+# SkipUI Fork Verification Plan — patches/1.58.0
 
-**Fork base:** 1.57.0 (9f4345c7)
-**Fixes included:** IgnoresSafeAreaLayout overflow crash + NavigationStack safe-area inset guards + pushed-destination bottom inset + inline title display mode + Button ripple configuration propagation
+**Fork base:** 1.58.0 (1901924); the fails-at-stock matrix below was run at the 1.57.0 base (9f4345c7) — the 1.58.0 rebase was zero-conflict with an unchanged suite ledger (see FORK.md rebase log)
+**Fixes included:** IgnoresSafeAreaLayout overflow guard + NavigationStack safe-area inset guards + pushed-destination bottom inset + inline title display mode + Button ripple configuration propagation
 
 ---
 
@@ -34,11 +34,11 @@ Expected: `BUILD SUCCESSFUL`. Any Kotlin type errors = `SKIP INSERT` syntax issu
 
 ---
 
-## Step 3 — Device: IgnoresSafeAreaLayout crash fix
+## Step 3 — Device: IgnoresSafeAreaLayout overflow guard (regression check)
 
 1. Install the debug APK on device.
-2. Open a sheet that contains a `NavigationStack` with a background view using `.ignoresSafeArea()` (see MREs.md for a self-contained repro).
-3. The sheet must open without crashing (`IllegalArgumentException: maxWidth must be >= minWidth`).
+2. Open a sheet that contains a `NavigationStack` with a background view using `.ignoresSafeArea()` (see MREs.md for a self-contained surface).
+3. The sheet must open without crashing and with layout identical to stock. Note: the overflow crash itself has never been reproduced in any recorded environment (stock also opens cleanly everywhere tested); this step verifies the guard introduces no regression, it does not demonstrate a fixed crash.
 
 ---
 
@@ -117,4 +117,14 @@ For `fix/ignores-safe-area-constraint-overflow`, the task specification calls fo
 
 ### All other fixes — same structural constraint
 
-For fixes 2a, pushed-destination, inline-title, and button-ripple, the same Robolectric limitation applies: insets are 0, touch interaction is absent, and preference-propagation end-to-end cannot be asserted without a full composition lifecycle. All five regression tests serve as documentation/proof-of-logic tests rather than black-box reproduction tests. The definitive evidence for each fix is the physical-device run on Samsung Galaxy A17 (SM-A176U1) (Android 16, build BP4A.251205.006), documented in `/Users/jared/Documents/skipui-mre/evidence/EVIDENCE.md`, and the source-code inspection documented in the individual PR drafts.
+For fixes 2a, pushed-destination, inline-title, and button-ripple, the same Robolectric limitation applies: insets are 0, touch interaction is absent, and preference-propagation end-to-end cannot be asserted without a full composition lifecycle. All five regression tests serve as documentation/proof-of-logic tests rather than black-box reproduction tests.
+
+### Definitive evidence per fix
+
+The behavioral evidence differs per fix and is recorded in `/Users/jared/Documents/skipui-mre/evidence/EVIDENCE.md`; the honest per-fix status is:
+
+- **2a (hidden-toolbar inset)**: reproduced and fixed on device. Physical-device MRE on Samsung Galaxy A17 (SM-A176U1, Android 16, build BP4A.251205.006): 100 px delta = 1× status bar; production-app A/B on the same device: 100 px on the Settings-surface; Firebase Test Lab cross-vendor corroboration (Galaxy S22 Δ=44 px, Pixel 10 Pro Δ=40 px, same direction).
+- **W3 (pushed-destination bottom inset)**: confirmed at app scale only. Production-app A/B on the A17: dead band 310 px → 175 px (Δ=135 px = 1× nav bar); FTL Pixel 10 Pro directional (Δ=55 px); the isolated MRE shows zero stock/fork differential on all five tested environments.
+- **2c (constraint overflow)**: no runtime evidence exists — the crash has never been reproduced in any recorded environment. Defensive hardening backed by the arithmetic-proof test and the `Constraints` API contract.
+- **W4 (inline title)**: no runtime differential captured anywhere (MRE zero-delta on all environments; no isolated app-level signal). Code inspection + JUnit model test only.
+- **W5 (ripple configuration)**: code inspection + JUnit model test only; all recorded environments were SkipFuse-native builds, which structurally cannot exhibit the defect.

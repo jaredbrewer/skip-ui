@@ -4,7 +4,7 @@ Thank you for contributing to the Skip project! Please review the contribution g
 
 Fix: suppress safe-area inset fallback in `NavigationStack` when toolbar is explicitly hidden.
 
-When `.toolbarVisibility(.hidden, for: .navigationBar)` is applied inside a `NavigationStack`, the Compose layout falls back to `WindowInsets.safeDrawing.calculateTopPadding()` as content padding even though the bar height is already zeroed. If the parent layout already compensates for the system inset, the gap is double-counted, appearing as a blank band below the status bar. Device measurement on Samsung Galaxy A17 (SM-A176U1) (Android 16) confirmed a 135 px delta (one inset applied twice).
+When `.toolbarVisibility(.hidden, for: .navigationBar)` is applied inside a `NavigationStack`, the Compose layout falls back to `WindowInsets.safeDrawing.calculateTopPadding()` as content padding even though the bar height is already zeroed. If the parent layout already compensates for the system inset, the gap is double-counted, appearing as a blank band below the status bar. Device measurement on Samsung Galaxy A17 (SM-A176U1) (Android 16) confirmed a 100 px delta between stock and this branch — exactly one status-bar height (35.6 dp), i.e., the inset applied twice at stock and once with the fix.
 
 The fix adds a surgical guard in four places (v1 Column layout top/bottom, v2 Box layout top/bottom): if `visibility == .hidden`, use 0 dp instead of the safe-area fallback. Automatic-hide (title-less roots where `showTopBar == false` but `visibility != .hidden`) is unaffected. Zero iOS/macOS impact—the entire layout path is guarded by `#if SKIP`.
 
@@ -17,18 +17,24 @@ import SwiftUI
 
 struct ReproduceNavigationInsetDouble: View {
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.red.ignoresSafeArea(edges: .top)
-                VStack {
-                    Spacer().frame(height: 60)
-                    Text("Top gap should be ~0 with fix ✓")
-                        .foregroundStyle(.white)
-                        .font(.headline)
-                    Spacer()
+        GeometryReader { geo in
+            let topInset = geo.safeAreaInsets.top
+            VStack(spacing: 0) {
+                NavigationStack {
+                    ZStack {
+                        Color.red.ignoresSafeArea(edges: .top)
+                        VStack {
+                            Spacer().frame(height: 60)
+                            Text("Top gap should be ~0 with fix ✓")
+                                .foregroundStyle(.white)
+                                .font(.headline)
+                            Spacer()
+                        }
+                    }
+                    .toolbarVisibility(.hidden, for: .navigationBar)
                 }
             }
-            .toolbarVisibility(.hidden, for: .navigationBar)
+            .padding(.top, topInset) // host pays the system top inset once
         }
     }
 }
@@ -36,14 +42,11 @@ struct ReproduceNavigationInsetDouble: View {
 #Preview { ReproduceNavigationInsetDouble() }
 ```
 
-**At stock**: a blank band ≈ status-bar height (~37 dp / 104 px @450dpi on Samsung Galaxy A17 (SM-A176U1)) appears between the status bar and the red canvas.
+The host pays the system top inset once (the `GeometryReader` + `.padding(.top, topInset)` pattern used by apps that draw their own chrome). At stock, the hidden-toolbar `NavigationStack` pays it a second time.
 
-Device measurement (Samsung Galaxy A17 (SM-A176U1), Android 16, gesture navigation enabled):
-- Stock gap: **310 px**
-- With workaround: **175 px**
-- Delta: **135 px** ≈ one navigation-bar inset—confirms one inset being applied twice
+**At stock**: a blank band of one status-bar height (100 px = 35.6 dp on the test device) appears between the status bar and the red canvas. Measured via uiautomator on Samsung Galaxy A17 (SM-A176U1), Android 16 (status bar 100 px, density 2.8125 px/dp): content-area top at **y=200** — 100 px below the status-bar bottom (y=100).
 
-**At this branch**: the red canvas extends flush to the status bar; gap ≈ 0.
+**At this branch**: the red canvas extends flush below the status bar; content-area top at **y=100**. Delta: **100 px = 1× status-bar height (35.6 dp)** — confirms one inset was being applied twice.
 
 ### Root Cause
 
@@ -58,8 +61,8 @@ let topPadding = arguments.ignoresSafeAreaEdges.contains(.top)
 
 When toolbar is explicitly hidden:
 - `topBarHeightDp == 0.dp` (zeroed by `LaunchedEffect` on `showTopBar` change)
-- `safeTopDp > 0.dp` on physical device (e.g., 37 dp on Samsung Galaxy A17 (SM-A176U1))
-- Result: `topPadding = max(0.dp, 37.dp) = 37.dp` applied again on top of parent's system-inset padding
+- `safeTopDp > 0.dp` on physical device (e.g., 35.6 dp on Samsung Galaxy A17 (SM-A176U1))
+- Result: `topPadding = max(0.dp, safeTopDp) = safeTopDp` applied again on top of parent's system-inset padding
 
 The same defect exists in v1 Column layout and bottom-bar paths of both layouts.
 
@@ -140,7 +143,7 @@ Skip Pull Request Checklist:
 
 4. **`testNavigationStackWithVisibleToolbarRendersWithoutCrash`** — regression guard: visible toolbar still renders (fix must not break the happy path).
 
-**Caveat**: Robolectric sets `WindowInsets.safeDrawing` to 0, so the double-inset is not observable via rendering in the automated suite. The guard-logic test proves correctness with a synthetic value; the definitive behavioral evidence is the device measurement (135 px delta) and gap-comparison on Samsung Galaxy A17 (SM-A176U1) (Android 16).
+**Caveat**: Robolectric sets `WindowInsets.safeDrawing` to 0, so the double-inset is not observable via rendering in the automated suite. The guard-logic test proves correctness with a synthetic value; the definitive behavioral evidence is the device measurement (100 px delta = 1× status-bar height) on Samsung Galaxy A17 (SM-A176U1) (Android 16), corroborated at app scale on the same device (100 px, see the A/B section above) and cross-vendor by a Firebase Test Lab run of the same two app builds (Samsung Galaxy S22 Δ=44 px, Pixel 10 Pro Δ=40 px on the same surface — smaller quantum consistent with those devices' smaller insets, same direction).
 
 ## Details
 

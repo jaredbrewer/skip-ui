@@ -37,9 +37,11 @@ struct ReproduceRippleSuppression: View {
 #Preview { ReproduceRippleSuppression() }
 ```
 
-**At stock**: tapping the button shows the default M3 ripple; `LocalRippleConfiguration = null` has no effect.
+**Expected at stock (by code inspection; see runtime status below)**: tapping the button shows the default ripple; `LocalRippleConfiguration = null` has no effect because the resolved M1 indication never reads that local.
 
-**At this branch**: tapping the button shows no ripple; the null configuration suppresses the indication as expected.
+**Expected at this branch**: tapping the button shows no ripple; the null configuration suppresses the indication.
+
+**Runtime status (stated honestly)**: this differential has not been captured at runtime in our evidence record. It requires a skipstone-transpiled app (`skip app create`); every environment we recorded ran SkipFuse-native builds, which structurally cannot exhibit the defect (the transpiled `.clickable()` path is not executed and `CompositionLocal`s do not cross the JNI bridge). The claim rests on the documented M1/M3 API mismatch and the generated-Kotlin diff below.
 
 ### Root Cause
 
@@ -96,11 +98,11 @@ Skip Pull Request Checklist:
 
 **AI use & verification:** The diagnosis, fix, tests, and this PR text were developed with substantial AI assistance (Claude).
 
-**Reproduction scope**: this fix is exclusively in the transpiled (skipstone) Kotlin path. A SkipFuse-native MRE app (Swift compiled to `libSkipUI.so`) cannot exhibit the defect because the `.material3Ripple { _ in nil }` SwiftUI modifier is wrapped in `#if SKIP` — the modifier is absent from both stock and fork SkipFuse builds, making stock and fork provably identical in that app. Emulator capture of this defect via a SkipFuse MRE was attempted on AVD `fianchetto_avd` (Android 14, SwiftShader) and confirmed NOT APPLICABLE; the finding is settled.
+**Reproduction scope**: this fix is exclusively in the transpiled (skipstone) Kotlin path. A SkipFuse-native MRE app (Swift compiled to `libSkipUI.so`) cannot exhibit the defect because the `.material3Ripple { _ in nil }` SwiftUI modifier is wrapped in `#if SKIP` — the modifier is absent from both stock and fork SkipFuse builds, making stock and fork provably identical in that app. Emulator capture of this defect via a SkipFuse MRE was attempted on a local Android 14 (API 34) AVD (SwiftShader) and confirmed NOT APPLICABLE; the finding is settled.
 
 **Primary evidence (code inspection + JUnit)**: (1) Generated-Kotlin diff: stock `Button.kt` calls `.clickable(onClick = action, enabled = isEnabled)` with no `indication` parameter, so `LocalIndication.current` (M1 ripple) resolves at call time and ignores `LocalRippleConfiguration`. Fork `Button.kt` inserts `val rippleConfig = LocalRippleConfiguration.current` / `val rippleIndication = if (rippleConfig != null) LocalIndication.current else null` and passes `indication = rippleIndication` explicitly. (2) JUnit test `testNullRippleConfigurationSuppressesButtonIndication` in `SkipUITests.swift` models the indication-selection logic via `SKIP INSERT` Kotlin assertions and passes at the fixed branch. The full SkipUI test suite was run on both the Swift-native and skipstone-transpiled Kotlin sides with zero new failures vs the base tag.
 
-**In-app behavioral observation**: the defect was observed in a transpiled SkipUI app (full Fianchetto build, skipstone path) on Samsung Galaxy A17 (SM-A176U1, Android 16, build BP4A.251205.006), where a button inside a container with `LocalRippleConfiguration` set to `null` continued to show the default M3 ripple on stock. Reproducing this via the minimal MRE structure requires a transpiled (non-SkipFuse-native) app built with `skip app create`; see the Minimal Reproduction section above.
+**Runtime evidence status (stated honestly)**: no runtime observation of this defect — or of the fix's effect — exists in our evidence record. All recorded device and emulator environments ran SkipFuse-native builds, where the stock and fixed builds are provably identical on this code path (the `SKIP INSERT` block is not compiled into the native `libSkipUI.so` route, confirmed by APK diff). Behavioral confirmation would require a skipstone-transpiled app built with `skip app create`; the fix's correctness claim rests entirely on the M1/M3 API mismatch documented in the root cause (`LocalIndication.current` resolves the M1 ripple, which reads `LocalRippleTheme`, not `LocalRippleConfiguration`) and on the generated-Kotlin diff above.
 
 **App-level A/B evidence (production SkipFuse app, Samsung Galaxy A17, One UI 8.5):** A full A/B run was conducted using two builds of a production SkipFuse app (the same app as the other four fixes in this PR batch) differing only in the skip-ui pin. The tab-bar buttons were pressed at `animator_duration_scale=10` in both arms. **Both arms showed no visible M3 ripple — delta: 0.** This is expected and not a failure: the production app is a SkipFuse-native build (Swift compiled to `libSkipUI.so`), and this fix exclusively targets the transpiled (skipstone) Kotlin path. `LocalRippleConfiguration` does not cross the JNI boundary; the tab-bar buttons are rendered natively. Screenshots `evidence/app-ab/stock-w23-ripple.png` and `evidence/app-ab/fork-w23-ripple.png` confirm identical behaviour in both arms. The fix is NOT APPLICABLE to SkipFuse-native apps at the app level; its scope (transpiled apps using `#if SKIP` with `LocalRippleConfiguration`) is as described in this PR.
 
