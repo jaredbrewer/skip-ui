@@ -14,9 +14,9 @@ This file records every change carried in this fork relative to upstream SkipUI 
 
 **Defect:** `IgnoresSafeAreaLayout` in `ComposeLayouts.swift` performs plain integer arithmetic to expand constraints by the safe-area inset. If an unbounded constraint (`Constraints.Infinity` = `Int.MAX_VALUE = 2_147_483_647`) reaches this path with a positive expansion (e.g., the navigation-bar inset), the addition wraps to a large negative value; `Constraints.copy()` with a negative max throws `IllegalArgumentException` mid-measure — a hard crash.
 
-**Evidence status:** deterministic device crash captured 2026-07-10 on the Samsung Galaxy A17 (SM-A176U1), Android 16 (SDK 36), One UI 8.5, build BP4A.251205.006, 3-button navigation. The production app carried a contemporaneous workaround comment (background `.ignoresSafeArea()` deliberately omitted because "double-nesting crashes"); reverting that single modifier under stock skip-ui 1.57.0 (the guarded code is unchanged between 1.57.0 and 1.58.0) crashes on the first sheet open with the verbatim trace at the guarded `ComposeLayouts` lines, and identical source survives on this fork (and renders the intended edge-to-edge background). Trigger chain (all three required): sheet presentation delivering `Constraints.Infinity` via `TargetViewLayout`'s intrinsic-height pass → the `NavigationStack` scaffold's own `IgnoresSafeAreaLayout` → a second nested `IgnoresSafeAreaLayout` from `.ignoresSafeArea()` on the content background. Earlier non-reproductions (AVD, API-34/36/37 emulators, the A17 MRE, Firebase Test Lab (Galaxy S22, Pixel 10 Pro), and the production-app A/B at stock 1.58.0 with the workaround in place — see `EVIDENCE.md`) are all explained: the trigger was absent, either worked around at the app level or bounded away by the presentation root in minimal compositions. The minimal MRE snippet still does not crash. The guard eliminates the class by construction, at zero cost on finite constraints.
+**Evidence status:** deterministic device crash captured 2026-07-10 on the Samsung Galaxy A17 (SM-A176U1), Android 16 (SDK 36), One UI 8.5, build BP4A.251205.006, 3-button navigation. The production app carried a contemporaneous workaround comment (background `.ignoresSafeArea()` deliberately omitted because "double-nesting crashes"); reverting that single modifier under stock skip-ui 1.57.0 (the guarded code is unchanged between 1.57.0 and 1.58.0) crashes on the first sheet open with the captured trace at the guarded `ComposeLayouts` lines (ComposeLayouts.kt:239 / :235 / :128), and identical source survives on this fork (and renders the intended edge-to-edge background). Trigger chain (all three required): sheet presentation delivering `Constraints.Infinity` via `TargetViewLayout`'s intrinsic-height pass → the `NavigationStack` scaffold's own `IgnoresSafeAreaLayout` → a second nested `IgnoresSafeAreaLayout` from `.ignoresSafeArea()` on the content background. Earlier non-reproductions (the MRE snippet on the API-34 AVD and on the A17; crash-free API-36/37 emulator sessions exercising other surfaces of the same MRE app; Firebase Test Lab production-app sheet runs (Galaxy S22, Pixel 10 Pro); and the production-app A/B at stock 1.58.0 with the workaround in place — see `EVIDENCE.md`) are all explained: the trigger was absent, either worked around at the app level or bounded away by the presentation root in minimal compositions. The minimal MRE snippet still does not crash. The guard eliminates the class by construction, at zero cost on finite constraints.
 
-**Files touched:** `Sources/SkipUI/SkipUI/Containers/ComposeLayouts.swift`
+**Files touched:** `Sources/SkipUI/SkipUI/Compose/ComposeLayouts.swift`
 
 **Fix branch:** `fix/ignores-safe-area-constraint-overflow`
 **Fix commit:** `73e7a54` — `fix: saturate Constraints.Infinity in IgnoresSafeAreaLayout to prevent integer-overflow crash on Android`
@@ -99,7 +99,7 @@ This file records every change carried in this fork relative to upstream SkipUI 
 | `PR_DRAFT_pushed-destination-bottom-inset.md` | Draft PR for Fix 3 |
 | `PR_DRAFT_inline-title-nonscrollable-root.md` | Draft PR for Fix 4 |
 | `PR_DRAFT_button-ripple-configuration.md` | Draft PR for Fix 5 |
-| `MREs.md` | Minimal reproduction examples for Fixes 1 and 2 |
+| `MREs.md` | Minimal reproduction example for Fix 2, plus a non-crashing regression surface for Fix 1 (the Fix 1 snippet exercises the guarded path but does not reproduce the crash; the reproduction is the workaround-reverted device A/B) |
 | `scripts/rebase-onto-upstream.sh` | Rebase helper — see below |
 | `EVIDENCE.md` (in `~/Documents/skipui-mre/evidence/`) | Evidence index: chronological device / emulator / Firebase Test Lab measurement record, with a current-status TL;DR at the top |
 
@@ -112,7 +112,7 @@ This file records every change carried in this fork relative to upstream SkipUI 
 - **Upstream range:** `9f4345c..1901924` (7 upstream commits)
 - **Upstream files changed:** `Color.swift`, `ContextMenu.swift`, `List.swift`, `DatePicker.swift`, `Picker.swift`, `EnvironmentValues.swift`, `TextField.swift` — zero overlap with our five patched files
 - **Conflicts:** none
-- **Suite result:** PASS — `JUNIT SUITES 9 TESTS 104 PASSED 102 (98.0%) FAILED 0 SKIPPED 2 TIME 128.56` (matches 1.57.0 baseline: 104 tests, 0 failures, 2 upstream Robolectric skips)
+- **Suite result:** PASS — `JUNIT SUITES 9 TESTS 104 PASSED 102 (98.0%) FAILED 0 SKIPPED 2 TIME 128.56` (matches 1.57.0 baseline: 104 tests, 0 failures, 2 upstream Robolectric skips). The ledger in `VERIFICATION.md` (TIME 126.28) is a separate run of the same suite on this branch — identical composition and counts; wall-clock TIME varies run-to-run.
 
 ---
 
