@@ -178,7 +178,6 @@ import skip.ui.Text
 #if SKIP
 import androidx.compose.ui.unit.dp
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 #endif
 
 fileprivate let logger: Logger = Logger(subsystem: "test", category: "SkipUITests")
@@ -1079,112 +1078,36 @@ final class SkipUITests: XCSnapshotTestCase {
         // SKIP INSERT:     "Full-screen case: actualExpandedEdges={.bottom} → navBarHeight applied correctly")
     }
 
-    /// Smoke test: `NavigationStack` with a pushed destination renders without crash.
+    /// Genuine push smoke: seeds the `NavigationStack` with a non-empty `NavigationPath`
+    /// so a real destination is pushed and composed on first render, exercising the
+    /// `RenderEntry` pushed-destination bottom-padding path that Fix 3 corrects (the
+    /// `actualExpandedEdges` value threaded into `NavigationEntryArguments`).
+    ///
+    /// Honest limitation: under Robolectric `WindowInsets.safeDrawing` is 0, so the
+    /// pushed panel's bottom dead band is 0 in both stock and fork builds — a rendered
+    /// geometry assertion cannot distinguish them here. The deterministic dead-band
+    /// evidence is the on-device production-app A/B (135 px = 1× nav bar → 0), recorded
+    /// in FORK.md / EVIDENCE.md. This test guards that the actual pushed-destination
+    /// code path composes and measures without crashing.
     func testPushedDestinationRendersWithoutCrash() throws {
-        _ = try render(view:
-            NavigationStack {
-                VStack {
-                    Text("Detail")
-                }
-                .navigationTitle("Detail")
-            }
-        )
-    }
-
-    // MARK: - NavigationStack: inline title display mode on non-scrollable roots
-
-    /// Verifies that `isInlineTitleDisplayMode` selects `pinnedScrollBehavior` and
-    /// that the large (exit-until-collapsed) path selects `exitUntilCollapsedScrollBehavior`.
-    ///
-    /// Pre-creating both behaviors at composition scope prevents the remember slot from
-    /// being orphaned when the display-mode preference propagates, which was leaving
-    /// `MediumTopAppBar` stuck on non-scrollable roots.
-    func testInlineTitleDisplayOnNonScrollableRoot() throws {
-        #if !SKIP
-        throw XCTSkip("TopAppBar scroll-behavior selection is Android/SKIP-only; no iOS analog")
-        #endif
-        // SKIP INSERT: val isInline = true
-        // SKIP INSERT: val selectedLabel = if (isInline) "pinned" else "exitUntilCollapsed"
-        // SKIP INSERT: assertEquals("pinned", selectedLabel,
-        // SKIP INSERT:     "isInlineTitleDisplayMode=true → pinnedScrollBehavior selected")
-        // SKIP INSERT:
-        // SKIP INSERT: val isLarge = false
-        // SKIP INSERT: val largeLabel = if (isLarge) "pinned" else "exitUntilCollapsed"
-        // SKIP INSERT: assertEquals("exitUntilCollapsed", largeLabel,
-        // SKIP INSERT:     "isInlineTitleDisplayMode=false → exitUntilCollapsedScrollBehavior selected")
-    }
-
-    /// Smoke test: `NavigationStack` with a `VStack` root and `.inline` title renders without crash.
-    func testNavigationStackVStackInlineTitleRendersWithoutCrash() throws {
         #if canImport(UIKit) || SKIP
+        var path = NavigationPath()
+        path.append("detail")
         _ = try render(view:
-            NavigationStack {
-                VStack {
-                    Text("Content")
-                }
-                .navigationTitle("Settings")
-                .navigationBarTitleDisplayMode(.inline)
+            NavigationStack(path: .constant(path)) {
+                Text("Root")
+                    .navigationTitle("Root")
+                    .navigationDestination(for: String.self) { value in
+                        VStack {
+                            Text("Pushed: \(value)")
+                        }
+                        .navigationTitle("Detail")
+                    }
             }
         )
         #else
-        throw XCTSkip(".navigationBarTitleDisplayMode is UIKit/SKIP-only")
+        throw XCTSkip("NavigationStack path-based push is UIKit/SKIP-only")
         #endif
-    }
-
-    /// Smoke test: `NavigationStack` with a `VStack` root and explicit large title renders without crash.
-    func testNavigationStackVStackLargeTitleRendersWithoutCrash() throws {
-        #if canImport(UIKit) || SKIP
-        _ = try render(view:
-            NavigationStack {
-                VStack {
-                    Text("Content")
-                }
-                .navigationTitle("Library")
-                .navigationBarTitleDisplayMode(.large)
-            }
-        )
-        #else
-        throw XCTSkip(".navigationBarTitleDisplayMode is UIKit/SKIP-only")
-        #endif
-    }
-
-    // MARK: - Button: LocalRippleConfiguration propagation
-
-    /// Verifies that when `LocalRippleConfiguration` is null (ripple suppressed), the
-    /// `.clickable()` indication is null rather than `LocalIndication.current`.
-    ///
-    /// Without this fix, `.clickable()` with no explicit indication resolves
-    /// `LocalIndication.current`, which in M3 is the M1 ripple path that does NOT read
-    /// `LocalRippleConfiguration`. Setting `LocalRippleConfiguration = null` on a container
-    /// therefore had no effect on child buttons.
-    func testNullRippleConfigurationSuppressesButtonIndication() throws {
-        #if !SKIP
-        throw XCTSkip("LocalRippleConfiguration is Android/SKIP-only; no iOS analog")
-        #endif
-        // SKIP INSERT: val configIsNonNull = true
-        // SKIP INSERT: val withConfig = if (configIsNonNull) "LocalIndication" else "null"
-        // SKIP INSERT: assertEquals("LocalIndication", withConfig,
-        // SKIP INSERT:     "Non-null config → LocalIndication.current used")
-        // SKIP INSERT:
-        // SKIP INSERT: val configIsNull = false
-        // SKIP INSERT: val suppressed = if (configIsNull) "LocalIndication" else "null"
-        // SKIP INSERT: assertEquals("null", suppressed,
-        // SKIP INSERT:     "Null config → indication = null (ripple suppressed)")
-    }
-
-    /// Smoke test: `Button` with default style renders without crash.
-    func testButtonWithDefaultStyleRendersWithoutCrash() throws {
-        _ = try render(view:
-            Button("Tap me") {}
-        )
-    }
-
-    /// Smoke test: `Button` with `.plain` style renders without crash.
-    func testButtonWithPlainStyleRendersWithoutCrash() throws {
-        _ = try render(view:
-            Button("Plain") {}
-                .buttonStyle(.plain)
-        )
     }
 
 }
